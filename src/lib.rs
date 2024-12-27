@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{collections::HashMap, str::FromStr};
+use std::{cmp::Ordering, collections::HashMap, str::FromStr};
 
 use rand::Rng;
 use regex::Regex;
@@ -41,7 +41,7 @@ struct DicePool {
 impl DicePool {
     fn roll(&self) -> DicePoolRollResult {
         DicePoolRollResult {
-            results: self.dice.iter().map(|die| die.roll()).collect(),
+            results: self.dice.iter().map(Die::roll).collect(),
         }
     }
 }
@@ -50,13 +50,13 @@ impl fmt::Display for DicePool {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut counter: HashMap<&Die, usize> = HashMap::new();
         for die in &self.dice {
-            *counter.entry(&die).or_default() += 1;
+            *counter.entry(die).or_default() += 1;
         }
         let mut output = String::new();
         for (die_size, count) in counter {
-            output.push_str(&format!("{}d{}", count, die_size.0))
+            output.push_str(&format!("{}d{}", count, die_size.0));
         }
-        write!(f, "{}", output)
+        write!(f, "{output}")
     }
 }
 
@@ -123,22 +123,20 @@ impl DiceRoll {
                     split_modifier.next(),
                 ) {
                     (Some("+"), Some(amount), None) => amount.parse::<i32>().unwrap(),
-                    (Some("-"), Some(amount), None) => -1 * amount.parse::<i32>().unwrap(),
+                    (Some("-"), Some(amount), None) => -amount.parse::<i32>().unwrap(),
                     _ => 0,
                 };
                 Ok(modifier)
             }
-            _ => {
-                return Err(ParseDiceRollError {
-                    input: String::from(s),
-                    failed_on: String::from("modifier"),
-                })
-            }
+            _ => Err(ParseDiceRollError {
+                input: String::from(s),
+                failed_on: String::from("modifier"),
+            }),
         }
     }
 
     fn parse_str(s: &str) -> Result<DiceRoll, ParseDiceRollError> {
-        let re = Regex::new(r"(?<n_dice>\d)*d(?<n_sides>\d+)(?<modifier> [+-] \d+)*").unwrap();
+        let re = Regex::new(r"(?<n_dice>\d+)*d(?<n_sides>\d+)(?<modifier> [+-] \d+)*").unwrap();
         let captures = re.captures(s).ok_or(ParseDiceRollError {
             input: String::from(s),
             failed_on: String::from("capture"),
@@ -162,12 +160,10 @@ impl DiceRoll {
 
 impl fmt::Display for DiceRoll {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.modifier > 0 {
-            write!(f, "{} + {}", self.dice_pool, self.modifier)
-        } else if self.modifier == 0 {
-            write!(f, "{}", self.dice_pool)
-        } else {
-            write!(f, "{} - {}", self.dice_pool, self.modifier.abs())
+        match self.modifier.cmp(&0) {
+            Ordering::Greater => write!(f, "{} + {}", self.dice_pool, self.modifier),
+            Ordering::Less => write!(f, "{} - {}", self.dice_pool, self.modifier.abs()),
+            Ordering::Equal => write!(f, "{}", self.dice_pool),
         }
     }
 }
