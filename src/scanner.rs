@@ -72,7 +72,8 @@ impl Scanner {
                     self.line += 1;
                 }
                 '=' => {
-                    if self.match_lookahead_and_consume('>') {
+                    self.advance();
+                    if self.match_and_consume('>') {
                         return Token::Arrow;
                     }
                     panic!("expected '>' after '='");
@@ -177,16 +178,6 @@ impl Scanner {
 
     fn match_and_consume(&mut self, ch: char) -> bool {
         if self.peek() == ch {
-            self.advance();
-            true
-        } else {
-            false
-        }
-    }
-
-    fn match_lookahead_and_consume(&mut self, ch: char) -> bool {
-        if self.peek_next() == ch {
-            self.advance();
             self.advance();
             true
         } else {
