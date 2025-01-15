@@ -2,8 +2,6 @@
 * Largely ripped from Robert Nystrom's *Crafting Interpreters*
 */
 
-use std::collections::HashMap;
-
 const EOF_CHAR: char = '\0';
 
 #[derive(Debug, PartialEq, Eq)]
@@ -59,11 +57,12 @@ impl Scanner {
         tokens
     }
 
+    // TODO: -> Result<Token, ScannerError>
     fn next_token(&mut self) -> Token {
         loop {
             let ch = self.curr_char();
             match dbg!(ch) {
-                ' ' => {
+                ' ' | '\t' => {
                     self.advance();
                     self.start = self.position;
                 }
@@ -72,16 +71,11 @@ impl Scanner {
                     self.start = self.position;
                     self.line += 1;
                 }
-                '\t' => {
-                    self.advance();
-                    self.start = self.position;
-                }
                 '=' => {
                     if self.match_lookahead_and_consume('>') {
                         return Token::Arrow;
-                    } else {
-                        panic!("expected '>' after '='");
                     }
+                    panic!("expected '>' after '='");
                 }
                 '-' => return Token::Hyphen,
                 // Quoted text - Str
@@ -93,9 +87,7 @@ impl Scanner {
                             self.line += 1;
                         }
                     }
-                    if self.is_at_end() {
-                        panic!("expected closing '\"'");
-                    }
+                    assert!(!self.is_at_end(), "expected closing '\"'");
                     // pass closing "
                     self.advance();
                     return Token::Str(
@@ -127,7 +119,7 @@ impl Scanner {
                         next_ch = self.curr_char();
                     }
                     let lexeme: String = self.source[self.start..self.position].iter().collect();
-                    match self.token_for_keyword(&lexeme) {
+                    match Self::token_for_keyword(&lexeme) {
                         Some(token) => return token,
                         None => panic!("not a keyword"),
                     }
@@ -140,7 +132,7 @@ impl Scanner {
         }
     }
 
-    fn token_for_keyword(&self, lexeme: &str) -> Option<Token> {
+    fn token_for_keyword(lexeme: &str) -> Option<Token> {
         match lexeme {
             "calendar" => Some(Token::Calendar),
             "clear-fact" => Some(Token::ClearFact),
@@ -173,7 +165,7 @@ impl Scanner {
         if self.is_at_end() {
             return EOF_CHAR;
         }
-        return self.source[self.position];
+        self.source[self.position]
     }
 
     fn peek_next(&self) -> char {
