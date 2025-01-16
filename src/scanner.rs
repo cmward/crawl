@@ -2,6 +2,9 @@
 * Largely ripped from Robert Nystrom's *Crafting Interpreters*
 */
 
+// TODO: Actual error handling - indicate position of invalid input
+// TODO: Tabs and newlines as tokens, since whitespace matters
+
 const EOF_CHAR: char = '\0';
 
 #[derive(Debug, PartialEq, Eq)]
@@ -13,12 +16,14 @@ pub enum Token {
     Concat,
     Eof,
     FactTest,
-    Hyphen,
     Int(i32),
+    Minus,
     On,
+    Plus,
     Procedure,
     Reminder,
     Roll,
+    RollRange(i32, i32),
     RollValue(String),
     SetFact,
     SetPersistentFact,
@@ -46,7 +51,6 @@ impl Scanner {
     }
 
     pub fn tokens(&mut self) -> Vec<Token> {
-        dbg!(&self.source);
         let mut tokens = Vec::new();
         while !self.is_at_end() {
             self.start = self.position;
@@ -61,27 +65,51 @@ impl Scanner {
     fn next_token(&mut self) -> Token {
         loop {
             let ch = self.curr_char();
-            match dbg!(ch) {
-                ' ' | '\t' => {
-                    self.advance();
-                    self.start = self.position;
-                }
-                '\n' => {
-                    self.advance();
-                    self.start = self.position;
-                    self.line += 1;
-                }
-                '=' => {
-                    self.advance();
-                    if self.match_and_consume('>') {
-                        return Token::Arrow;
+            self.advance();
+            match ch {
+                // Dice rolls, ranges & numbers
+                n if n.is_numeric() => {
+                    let mut next_ch = self.curr_char();
+                    let mut is_dice_roll = false;
+                    let mut is_roll_range = false;
+                    while !self.is_at_end() {
+                        match next_ch {
+                            'd' => is_dice_roll = true,
+                            '-' => is_roll_range = true,
+                            nch if nch.is_numeric() => {}
+                            _ => break,
+                        }
+                        self.advance();
+                        next_ch = self.curr_char();
                     }
-                    panic!("expected '>' after '='");
+                    let lexeme = self.source[self.start..self.position]
+                        .iter()
+                        .collect::<String>();
+                    match (is_dice_roll, is_roll_range) {
+                        (true, false) => return Token::RollValue(lexeme),
+                        (false, true) => {
+                            let range_nums = lexeme.split('-').collect::<Vec<&str>>();
+                            let range_min = range_nums
+                                .first()
+                                .expect("range min should be a value")
+                                .parse::<i32>()
+                                .expect("range min should be a number");
+                            let range_max = range_nums
+                                .last()
+                                .expect("range max should be a value")
+                                .parse::<i32>()
+                                .expect("range max should be a number");
+                            return Token::RollRange(range_min, range_max);
+                        }
+                        (false, false) => {
+                            return Token::Int(lexeme.parse::<i32>().expect("should be a number"));
+                        }
+                        (true, true) => panic!("can't be a range and a roll"),
+                    }
                 }
-                '-' => return Token::Hyphen,
+
                 // Quoted text - Str
                 '"' => {
-                    self.advance();
                     while self.peek() != '"' && !self.is_at_end() {
                         self.advance();
                         if self.curr_char() == '\n' {
@@ -97,25 +125,12 @@ impl Scanner {
                             .collect(),
                     );
                 }
-                // Numbers
-                n if n.is_numeric() => {
-                    let mut next_ch = self.curr_char();
-                    while !self.is_at_end() && next_ch.is_numeric() {
-                        self.advance();
-                        next_ch = self.curr_char();
-                    }
-                    return Token::Int(
-                        self.source[self.start..self.position]
-                            .iter()
-                            .collect::<String>()
-                            .parse::<i32>()
-                            .expect("should be a number"),
-                    );
-                }
+
                 // Text - keywords
                 c if c.is_alphabetic() => {
                     let mut next_ch = self.curr_char();
-                    while !self.is_at_end() && next_ch.is_alphabetic() {
+                    // function names can have hyphens in them
+                    while !self.is_at_end() && (next_ch.is_alphabetic() || next_ch == '-') {
                         self.advance();
                         next_ch = self.curr_char();
                     }
@@ -125,9 +140,29 @@ impl Scanner {
                         None => panic!("not a keyword"),
                     }
                 }
+
+                ' ' | '\t' => {
+                    self.start = self.position;
+                }
+
+                '\n' => {
+                    self.start = self.position;
+                    self.line += 1;
+                }
+
+                '=' => {
+                    if self.match_and_consume('>') {
+                        return Token::Arrow;
+                    }
+                    panic!("expected '>' after '='");
+                }
+
+                '+' => return Token::Plus,
+
+                '-' => return Token::Minus,
+
                 x => {
-                    dbg!(x);
-                    todo!();
+                    panic!("unexpected character {}", x);
                 }
             }
         }
@@ -195,7 +230,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scan() {
+    fn scan_if_then() {
         let source = "\"Hi\" => 5".chars().collect();
         let mut scanner = Scanner::new(source);
         assert_eq!(
@@ -218,6 +253,60 @@ mod tests {
             vec![
                 Token::Procedure,
                 Token::Str(String::from("proc")),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_roll_range() {
+        let source = "roll 2-10".chars().collect();
+        let mut scanner = Scanner::new(source);
+        assert_eq!(
+            scanner.tokens(),
+            vec![Token::Roll, Token::RollRange(2, 10), Token::Eof]
+        );
+    }
+
+    #[test]
+    fn scan_expr() {
+        let source = "roll 1-3 on 1d6 + 1 => set-fact \"party is lost\""
+            .chars()
+            .collect();
+        let mut scanner = Scanner::new(source);
+        assert_eq!(
+            scanner.tokens(),
+            vec![
+                Token::Roll,
+                Token::RollRange(1, 3),
+                Token::On,
+                Token::RollValue(String::from("1d6")),
+                Token::Plus,
+                Token::Int(1),
+                Token::Arrow,
+                Token::SetFact,
+                Token::Str(String::from("party is lost")),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_concat() {
+        let source = "set-fact \"weather is \" + roll on table \"weather\""
+            .chars()
+            .collect();
+        let mut scanner = Scanner::new(source);
+        assert_eq!(
+            scanner.tokens(),
+            vec![
+                Token::SetFact,
+                Token::Str(String::from("weather is ")),
+                Token::Plus,
+                Token::Roll,
+                Token::On,
+                Token::Table,
+                Token::Str(String::from("weather")),
                 Token::Eof,
             ]
         );
