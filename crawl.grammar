@@ -1,19 +1,18 @@
 program         -> procedure* EOF
-proc_def        -> "procedure" STRING
 procedure       -> proc_def stmt+
+proc_def        -> "procedure" STRING
 stmt            -> if_then | expr
-if_then         -> (dice_roll_expr | fact_check) "=>" expr
-expr            -> dice_roll_expr
-                   | table_roll_expr
+if_then         -> (dice_roll | fact_check) "=>" expr
+expr            -> dice_roll
+                   | table_roll
                    | set_fact
                    | set_pfact
                    | clear_fact
                    | clear_pfact
                    | check_fact
                    | reminder_expr
-dice_roll_expr  -> "roll" num_range "on" DICE_ROLL ((+ | -) NUMBER)*
-num_range       -> NUMBER ("-" NUMBER)*
-table_roll_expr -> "roll" "on" "table" STRING
+dice_roll       -> "roll" (NUM_RANGE| NUMBER) "on" ROLL_SPECIFIER ((+ | -) NUMBER)*
+table_roll      -> "roll" "on" "table" STRING
 set_fact        -> set-fact STRING
 set_pfact       -> set-persistent-fact STRING
 clear_fact      -> clear-fact STRING

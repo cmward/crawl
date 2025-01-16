@@ -16,15 +16,15 @@ pub enum Token {
     Concat,
     Eof,
     FactTest,
-    Int(i32),
     Minus,
+    Num(i32),
+    NumRange(i32, i32),
     On,
     Plus,
     Procedure,
     Reminder,
     Roll,
-    RollRange(i32, i32),
-    RollValue(String),
+    RollSpecifier(String),
     SetFact,
     SetPersistentFact,
     Str(String),
@@ -86,7 +86,7 @@ impl Scanner {
                         .iter()
                         .collect::<String>();
                     match (is_dice_roll, is_roll_range) {
-                        (true, false) => return Token::RollValue(lexeme),
+                        (true, false) => return Token::RollSpecifier(lexeme),
                         (false, true) => {
                             let range_nums = lexeme.split('-').collect::<Vec<&str>>();
                             let range_min = range_nums
@@ -99,10 +99,10 @@ impl Scanner {
                                 .expect("range max should be a value")
                                 .parse::<i32>()
                                 .expect("range max should be a number");
-                            return Token::RollRange(range_min, range_max);
+                            return Token::NumRange(range_min, range_max);
                         }
                         (false, false) => {
-                            return Token::Int(lexeme.parse::<i32>().expect("should be a number"));
+                            return Token::Num(lexeme.parse::<i32>().expect("should be a number"));
                         }
                         (true, true) => panic!("can't be a range and a roll"),
                     }
@@ -238,7 +238,7 @@ mod tests {
             vec![
                 Token::Str(String::from("Hi")),
                 Token::Arrow,
-                Token::Int(5),
+                Token::Num(5),
                 Token::Eof,
             ]
         );
@@ -264,7 +264,7 @@ mod tests {
         let mut scanner = Scanner::new(source);
         assert_eq!(
             scanner.tokens(),
-            vec![Token::Roll, Token::RollRange(2, 10), Token::Eof]
+            vec![Token::Roll, Token::NumRange(2, 10), Token::Eof]
         );
     }
 
@@ -278,17 +278,32 @@ mod tests {
             scanner.tokens(),
             vec![
                 Token::Roll,
-                Token::RollRange(1, 3),
+                Token::NumRange(1, 3),
                 Token::On,
-                Token::RollValue(String::from("1d6")),
+                Token::RollSpecifier(String::from("1d6")),
                 Token::Plus,
-                Token::Int(1),
+                Token::Num(1),
                 Token::Arrow,
                 Token::SetFact,
                 Token::Str(String::from("party is lost")),
                 Token::Eof,
             ]
         );
+    }
+
+    #[test]
+    fn scan_roll() {
+        let source = "roll 1 on 1d100".chars().collect();
+        let mut scanner = Scanner::new(source);
+        assert_eq!(
+            scanner.tokens(),
+            vec![
+                Token::Roll,
+                Token::Num(1),
+                Token::On,
+                Token::RollSpecifier(String::from("1d100"))
+            ]
+        )
     }
 
     #[test]
