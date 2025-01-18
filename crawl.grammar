@@ -1,7 +1,7 @@
 program         -> procedure* EOF
 procedure       -> proc_def stmt+
 proc_def        -> "procedure" STRING
-stmt            -> if_then | expr
+stmt            -> TAB (if_then | expr) NEWLINE
 if_then         -> (dice_roll | fact_check) "=>" expr
 expr            -> dice_roll
                    | table_roll

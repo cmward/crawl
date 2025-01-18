@@ -10,5 +10,12 @@ fn main() {
     println!("{roll} = {result}");
 
     let mut scanner = Scanner::new("roll on".chars().collect());
-    println!("{:?}", scanner.tokens());
+    for token in scanner.tokens() {
+        println!("TOKEN: {:?}", token);
+    }
+
+    let mut scanner = Scanner::new("=".chars().collect());
+    for token in scanner.tokens() {
+        println!("TOKEN: {:?}", token);
+    }
 }

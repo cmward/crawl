@@ -2,8 +2,7 @@
 * Largely ripped from Robert Nystrom's *Crafting Interpreters*
 */
 
-// TODO: Actual error handling - indicate position of invalid input
-// TODO: Tabs and newlines as tokens, since whitespace matters
+use crate::error::CrawlError;
 
 const EOF_CHAR: char = '\0';
 
@@ -17,6 +16,7 @@ pub enum Token {
     Eof,
     FactTest,
     Minus,
+    Newline,
     Num(i32),
     NumRange(i32, i32),
     On,
@@ -28,6 +28,9 @@ pub enum Token {
     SetFact,
     SetPersistentFact,
     Str(String),
+    SwapFact,
+    SwapPersistentFact,
+    Tab,
     Table,
     Tick,
 }
@@ -50,19 +53,23 @@ impl Scanner {
         }
     }
 
-    pub fn tokens(&mut self) -> Vec<Token> {
-        let mut tokens = Vec::new();
+    pub fn tokens(&mut self) -> Vec<Result<Token, CrawlError>> {
+        if self.is_at_end() {
+            return Vec::new();
+        }
+
+        let mut toks = Vec::new();
         while !self.is_at_end() {
             self.start = self.position;
-            let token = self.next_token();
-            tokens.push(token);
+            toks.push(self.next_token());
         }
-        tokens.push(Token::Eof);
-        tokens
+        toks.push(Ok(Token::Eof));
+
+        toks
     }
 
     // TODO: -> Result<Token, ScannerError>
-    fn next_token(&mut self) -> Token {
+    fn next_token(&mut self) -> Result<Token, CrawlError> {
         loop {
             let ch = self.curr_char();
             self.advance();
@@ -86,7 +93,7 @@ impl Scanner {
                         .iter()
                         .collect::<String>();
                     match (is_dice_roll, is_roll_range) {
-                        (true, false) => return Token::RollSpecifier(lexeme),
+                        (true, false) => return Ok(Token::RollSpecifier(lexeme)),
                         (false, true) => {
                             let range_nums = lexeme.split('-').collect::<Vec<&str>>();
                             let range_min = range_nums
@@ -99,12 +106,20 @@ impl Scanner {
                                 .expect("range max should be a value")
                                 .parse::<i32>()
                                 .expect("range max should be a number");
-                            return Token::NumRange(range_min, range_max);
+                            return Ok(Token::NumRange(range_min, range_max));
                         }
                         (false, false) => {
-                            return Token::Num(lexeme.parse::<i32>().expect("should be a number"));
+                            return Ok(Token::Num(
+                                lexeme.parse::<i32>().expect("should be a number"),
+                            ));
                         }
-                        (true, true) => panic!("can't be a range and a roll"),
+                        (true, true) => {
+                            return Err(CrawlError::ScannerError {
+                                position: self.position,
+                                line: self.line,
+                                lexeme,
+                            })
+                        }
                     }
                 }
 
@@ -116,14 +131,20 @@ impl Scanner {
                             self.line += 1;
                         }
                     }
-                    assert!(!self.is_at_end(), "expected closing '\"'");
+                    if self.is_at_end() {
+                        return Err(CrawlError::ScannerError {
+                            position: self.position,
+                            line: self.line,
+                            lexeme: String::from(ch),
+                        });
+                    }
                     // pass closing "
                     self.advance();
-                    return Token::Str(
+                    return Ok(Token::Str(
                         self.source[self.start + 1..self.position - 1]
                             .iter()
                             .collect(),
-                    );
+                    ));
                 }
 
                 // Text - keywords
@@ -136,33 +157,49 @@ impl Scanner {
                     }
                     let lexeme: String = self.source[self.start..self.position].iter().collect();
                     match Self::token_for_keyword(&lexeme) {
-                        Some(token) => return token,
-                        None => panic!("not a keyword"),
+                        Some(token) => return Ok(token),
+                        None => {
+                            return Err(CrawlError::ScannerError {
+                                position: self.position,
+                                line: self.line,
+                                lexeme,
+                            })
+                        }
                     }
                 }
 
-                ' ' | '\t' => {
+                ' ' => {
                     self.start = self.position;
                 }
 
+                '\t' => return Ok(Token::Tab),
+
                 '\n' => {
-                    self.start = self.position;
                     self.line += 1;
+                    return Ok(Token::Newline);
                 }
 
                 '=' => {
                     if self.match_and_consume('>') {
-                        return Token::Arrow;
+                        return Ok(Token::Arrow);
                     }
-                    panic!("expected '>' after '='");
+                    return Err(CrawlError::ScannerError {
+                        position: self.position,
+                        line: self.line,
+                        lexeme: String::from(ch),
+                    });
                 }
 
-                '+' => return Token::Plus,
+                '+' => return Ok(Token::Plus),
 
-                '-' => return Token::Minus,
+                '-' => return Ok(Token::Minus),
 
-                x => {
-                    panic!("unexpected character {}", x);
+                c => {
+                    return Err(CrawlError::ScannerError {
+                        position: self.position,
+                        line: self.line,
+                        lexeme: String::from(c),
+                    })
                 }
             }
         }
@@ -180,6 +217,8 @@ impl Scanner {
             "roll" => Some(Token::Roll),
             "set-fact" => Some(Token::SetFact),
             "set-persistent-fact" => Some(Token::SetPersistentFact),
+            "swap-fact" => Some(Token::SwapFact),
+            "swap-persistent-fact" => Some(Token::SwapPersistentFact),
             "table" => Some(Token::Table),
             "tick" => Some(Token::Tick),
             _ => None,
@@ -204,6 +243,7 @@ impl Scanner {
         self.source[self.position]
     }
 
+    #[allow(dead_code)]
     fn peek_next(&self) -> char {
         if self.position + 1 >= self.source.len() {
             return EOF_CHAR;
@@ -233,8 +273,9 @@ mod tests {
     fn scan_if_then() {
         let source = "\"Hi\" => 5".chars().collect();
         let mut scanner = Scanner::new(source);
+        let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
         assert_eq!(
-            scanner.tokens(),
+            toks,
             vec![
                 Token::Str(String::from("Hi")),
                 Token::Arrow,
@@ -248,8 +289,9 @@ mod tests {
     fn scan_proc_def() {
         let source = "procedure \"proc\"".chars().collect();
         let mut scanner = Scanner::new(source);
+        let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
         assert_eq!(
-            scanner.tokens(),
+            toks,
             vec![
                 Token::Procedure,
                 Token::Str(String::from("proc")),
@@ -262,10 +304,8 @@ mod tests {
     fn scan_roll_range() {
         let source = "roll 2-10".chars().collect();
         let mut scanner = Scanner::new(source);
-        assert_eq!(
-            scanner.tokens(),
-            vec![Token::Roll, Token::NumRange(2, 10), Token::Eof]
-        );
+        let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
+        assert_eq!(toks, vec![Token::Roll, Token::NumRange(2, 10), Token::Eof]);
     }
 
     #[test]
@@ -274,8 +314,9 @@ mod tests {
             .chars()
             .collect();
         let mut scanner = Scanner::new(source);
+        let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
         assert_eq!(
-            scanner.tokens(),
+            toks,
             vec![
                 Token::Roll,
                 Token::NumRange(1, 3),
@@ -295,13 +336,15 @@ mod tests {
     fn scan_roll() {
         let source = "roll 1 on 1d100".chars().collect();
         let mut scanner = Scanner::new(source);
+        let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
         assert_eq!(
-            scanner.tokens(),
+            toks,
             vec![
                 Token::Roll,
                 Token::Num(1),
                 Token::On,
-                Token::RollSpecifier(String::from("1d100"))
+                Token::RollSpecifier(String::from("1d100")),
+                Token::Eof,
             ]
         )
     }
@@ -312,8 +355,9 @@ mod tests {
             .chars()
             .collect();
         let mut scanner = Scanner::new(source);
+        let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
         assert_eq!(
-            scanner.tokens(),
+            toks,
             vec![
                 Token::SetFact,
                 Token::Str(String::from("weather is ")),
@@ -328,11 +372,21 @@ mod tests {
     }
 
     #[test]
+    fn tokens_valid_once() {
+        let source = "roll 2-10".chars().collect();
+        let mut scanner = Scanner::new(source);
+        let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
+        assert_eq!(toks, vec![Token::Roll, Token::NumRange(2, 10), Token::Eof]);
+        assert!(scanner.tokens().is_empty());
+        assert!(scanner.tokens().is_empty());
+    }
+
+    #[test]
     #[should_panic(expected = "expected '>' after '='")]
     fn incomplete_arrow() {
         let source = "= 5".chars().collect();
         let mut scanner = Scanner::new(source);
-        scanner.tokens();
+        let _ = scanner.tokens().into_iter().map(|t| t.unwrap()).collect::<Vec<Token>>();
     }
 
     #[test]
@@ -340,6 +394,6 @@ mod tests {
     fn unterminated_string() {
         let source = "\"Unterminated string".chars().collect();
         let mut scanner = Scanner::new(source);
-        scanner.tokens();
+        let _ = scanner.tokens().into_iter().map(|t| t.unwrap()).collect::<Vec<Token>>();
     }
 }
