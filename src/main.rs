@@ -9,13 +9,13 @@ fn main() {
     println!("{result:?}");
     println!("{roll} = {result}");
 
-    let mut scanner = Scanner::new("roll on".chars().collect());
+    let mut scanner = Scanner::new(dbg!("roll on").chars().collect());
     for token in scanner.tokens() {
-        println!("TOKEN: {:?}", token);
+        println!("{token:?}");
     }
 
-    let mut scanner = Scanner::new("=".chars().collect());
+    let mut scanner = Scanner::new(dbg!("= hello yup - 2d + 100c").chars().collect());
     for token in scanner.tokens() {
-        println!("TOKEN: {:?}", token);
+        println!("{token:?}");
     }
 }

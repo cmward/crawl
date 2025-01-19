@@ -68,7 +68,6 @@ impl Scanner {
         toks
     }
 
-    // TODO: -> Result<Token, ScannerError>
     fn next_token(&mut self) -> Result<Token, CrawlError> {
         loop {
             let ch = self.curr_char();
@@ -81,7 +80,20 @@ impl Scanner {
                     let mut is_roll_range = false;
                     while !self.is_at_end() {
                         match next_ch {
-                            'd' => is_dice_roll = true,
+                            'd' => {
+                                if !self.peek().is_numeric() {
+                                    return Err(CrawlError::ScannerError {
+                                        position: self.position,
+                                        line: self.line,
+                                        lexeme: String::from(
+                                            self.source[self.start..self.position]
+                                                .iter()
+                                                .collect::<String>(),
+                                        ),
+                                    });
+                                }
+                                is_dice_roll = true;
+                            }
                             '-' => is_roll_range = true,
                             nch if nch.is_numeric() => {}
                             _ => break,
@@ -386,7 +398,11 @@ mod tests {
     fn incomplete_arrow() {
         let source = "= 5".chars().collect();
         let mut scanner = Scanner::new(source);
-        let _ = scanner.tokens().into_iter().map(|t| t.unwrap()).collect::<Vec<Token>>();
+        let _ = scanner
+            .tokens()
+            .into_iter()
+            .map(|t| t.unwrap())
+            .collect::<Vec<Token>>();
     }
 
     #[test]
@@ -394,6 +410,10 @@ mod tests {
     fn unterminated_string() {
         let source = "\"Unterminated string".chars().collect();
         let mut scanner = Scanner::new(source);
-        let _ = scanner.tokens().into_iter().map(|t| t.unwrap()).collect::<Vec<Token>>();
+        let _ = scanner
+            .tokens()
+            .into_iter()
+            .map(|t| t.unwrap())
+            .collect::<Vec<Token>>();
     }
 }
