@@ -6,4 +6,3 @@ procedure "day"
     swap-fact "weather is " + roll on table "weather"
     reminder "players must consume one day's worth of rations"
     clear-fact "weather is..."
-

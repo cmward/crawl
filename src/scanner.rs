@@ -81,14 +81,15 @@ impl Scanner {
                     while !self.is_at_end() {
                         match next_ch {
                             'd' => {
-                                if !self.peek().is_numeric() {
+                                if !self.peek_next().is_numeric() {
                                     return Err(CrawlError::ScannerError {
                                         position: self.position,
                                         line: self.line,
-                                        lexeme: String::from(
-                                            self.source[self.start..self.position]
-                                                .iter()
-                                                .collect::<String>(),
+                                        lexeme: self.source[self.start..self.position]
+                                            .iter()
+                                            .collect::<String>(),
+                                        reason: String::from(
+                                            "roll specifier must be NUMBER 'd' NUMBER",
                                         ),
                                     });
                                 }
@@ -130,6 +131,7 @@ impl Scanner {
                                 position: self.position,
                                 line: self.line,
                                 lexeme,
+                                reason: String::from("can't be a dice roll and dice range"),
                             })
                         }
                     }
@@ -147,7 +149,8 @@ impl Scanner {
                         return Err(CrawlError::ScannerError {
                             position: self.position,
                             line: self.line,
-                            lexeme: String::from(ch),
+                            lexeme: self.source[self.start..self.position].iter().collect(),
+                            reason: String::from("unterminated string, expected closing '\"'"),
                         });
                     }
                     // pass closing "
@@ -175,6 +178,7 @@ impl Scanner {
                                 position: self.position,
                                 line: self.line,
                                 lexeme,
+                                reason: String::from("not a keyword"),
                             })
                         }
                     }
@@ -198,7 +202,8 @@ impl Scanner {
                     return Err(CrawlError::ScannerError {
                         position: self.position,
                         line: self.line,
-                        lexeme: String::from(ch),
+                        lexeme: self.source[self.start..self.position].iter().collect(),
+                        reason: String::from("expected '>' after '='"),
                     });
                 }
 
@@ -211,6 +216,7 @@ impl Scanner {
                         position: self.position,
                         line: self.line,
                         lexeme: String::from(c),
+                        reason: String::from("unexpected character"),
                     })
                 }
             }
@@ -346,16 +352,16 @@ mod tests {
 
     #[test]
     fn scan_roll() {
-        let source = "roll 1 on 1d100".chars().collect();
+        let source = "roll 99 on 3d100".chars().collect();
         let mut scanner = Scanner::new(source);
         let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
         assert_eq!(
             toks,
             vec![
                 Token::Roll,
-                Token::Num(1),
+                Token::Num(99),
                 Token::On,
-                Token::RollSpecifier(String::from("1d100")),
+                Token::RollSpecifier(String::from("3d100")),
                 Token::Eof,
             ]
         )
@@ -406,7 +412,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "expected closing '\"'")]
+    #[should_panic(expected = "unterminated string")]
     fn unterminated_string() {
         let source = "\"Unterminated string".chars().collect();
         let mut scanner = Scanner::new(source);
