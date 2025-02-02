@@ -1,21 +1,25 @@
 program         -> procedure* EOF
-procedure       -> proc_def (NEWLINE stmt)+
-proc_def        -> "procedure" STRING
-stmt            -> TAB (if_then | expr)
-if_then         -> (dice_roll | fact_check) "=>" expr
-expr            -> dice_roll
-                   | table_roll
-                   | set_fact
+procedure       -> proc_decl (TAB stmt)+
+proc_decl       -> "procedure" IDENT
+consequent      -> (set_fact
                    | set_pfact
                    | clear_fact
                    | clear_pfact
-                   | check_fact
-                   | reminder_expr
-dice_roll       -> "roll" (NUM_RANGE| NUMBER) "on" ROLL_SPECIFIER ((+ | -) NUMBER)*
+                   | table_roll
+                   )
+stmt            -> (if_then
+                   | consequent
+                   | reminder
+                   | proc_call  # allowed in other procedure? what does that do?
+                   ) NEWLINE
+if_then         -> (dice_roll | fact_check) "=>" consequent
+matching_roll   -> "roll" ROLL_SPECIFIER NEWLINE (INDENT (NUM_RANGE | NUMBER) "=>" consequent NEWLINE)+
+set_fact        -> "set-fact" STRING
+set_pfact       -> "set-persistent-fact" STRING
+clear_fact      -> "clear-fact" STRING
+clear_pfact     -> "clear-persistent-fact" STRING
+check_fact      -> "fact?" STRING
+reminder        -> "reminder" STRING
+dice_roll       -> "roll" (NUM_RANGE | NUMBER) "on" ROLL_SPECIFIER ((+ | -) NUMBER)*
 table_roll      -> "roll" "on" "table" STRING
-set_fact        -> set-fact STRING
-set_pfact       -> set-persistent-fact STRING
-clear_fact      -> clear-fact STRING
-clear_pfact     -> clear-persistent-fact STRING
-check_fact      -> fact? STRING
-reminder_expr   -> reminder STRING
+proc_call       -> IDENT
