@@ -52,26 +52,36 @@ impl Parser {
     pub fn parse(&mut self) -> Vec<Result<Statement, CrawlError>> {
         let mut statements = Vec::new();
         while !self.is_at_end() {
-            statements.push(self.statement());
+            statements.push(Ok(self.statement().unwrap()));
         }
         statements
     }
 
     fn statement(&mut self) -> Result<Statement, CrawlError> {
+        let stmt: Result<Statement, CrawlError>;
+        dbg!(self.peek());
         match self.peek() {
-            Token::Procedure => self.procedure(),
-            Token::Identifier(_) => self.procedure_call(),
-            _ => Err(CrawlError::ParserError {
-                token: format!("{:?}", self.peek()),
-            }),
+            Token::Procedure => stmt = self.procedure(),
+            Token::Identifier(_) => stmt = self.procedure_call(),
+            // TODO: no catchall
+            _ => {
+                stmt = Err(CrawlError::ParserError {
+                    token: format!("{:?}", self.peek()),
+                });
+            }
         }
+        self.consume(Token::Newline)?;
+        stmt
     }
 
     fn procedure(&mut self) -> Result<Statement, CrawlError> {
-        self.consume(Token::Procedure)?;
+        // TODO: replace expects with automatically filled out expected tokens in consume
+        self.consume(Token::Procedure).expect("expected procedure");
         let declaration: ProcedureDeclaration;
         if let Token::Identifier(name) = self.peek() {
             declaration = ProcedureDeclaration(name.clone());
+            self.advance();
+            self.consume(Token::Newline).expect("expected newline");
         } else {
             return Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
@@ -80,8 +90,10 @@ impl Parser {
 
         let mut body = Vec::new();
         while *self.peek() != Token::End {
+            self.consume(Token::Indent).expect("expected indent");
             body.push(Box::new(self.statement()?));
         }
+        self.consume(Token::End).expect("expected end");
 
         return Ok(Statement::Procedure { declaration, body });
     }
@@ -127,7 +139,11 @@ mod tests {
 
     #[test]
     fn test_parse_procedure_call() {
-        let toks = vec![Token::Identifier("proc-name".into()), Token::Eof];
+        let toks = vec![
+            Token::Identifier("proc-name".into()),
+            Token::Newline,
+            Token::Eof,
+        ];
         let parsed: Vec<Statement> = Parser::new(toks)
             .parse()
             .into_iter()
@@ -137,7 +153,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_procedure() {
+    fn test_parse_procedure_def() {
         let toks = vec![
             Token::Procedure,
             Token::Identifier("proc".into()),
@@ -146,6 +162,7 @@ mod tests {
             Token::Identifier("other-proc".into()),
             Token::Newline,
             Token::End,
+            Token::Newline,
             Token::Eof,
         ];
         let parsed: Vec<Statement> = Parser::new(toks)
