@@ -6,14 +6,17 @@ use crate::error::CrawlError;
 
 const EOF_CHAR: char = '\0';
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
     Arrow,
     ClearFact,
     ClearPersistentFact,
     Concat,
+    End,
     Eof,
     FactTest,
+    Identifier(String),
+    Indent,
     Minus,
     Newline,
     Num(i32),
@@ -29,7 +32,6 @@ pub enum Token {
     Str(String),
     SwapFact,
     SwapPersistentFact,
-    Indent,
     Table,
 }
 
@@ -80,7 +82,7 @@ impl Scanner {
                 // Text - keywords
                 c if c.is_alphabetic() => return self.scan_symbol(),
 
-                // This is the only reason this needs to be wrapped in a loop.
+                // This is the only reason this needs to be wrapped in a loop
                 ' ' => self.start = self.position,
 
                 '\t' => return Ok(Token::Indent),
@@ -151,6 +153,7 @@ impl Scanner {
             (true, false) => Ok(Token::RollSpecifier(lexeme)),
             (false, true) => {
                 let range_nums = lexeme.split('-').collect::<Vec<&str>>();
+                // TODO: produce ScannerErrors here
                 let range_min = range_nums
                     .first()
                     .expect("range min should be a value")
@@ -208,15 +211,8 @@ impl Scanner {
         }
         let lexeme: String = self.source[self.start..self.position].iter().collect();
         match Self::token_for_keyword(&lexeme) {
-            Some(token) => return Ok(token),
-            None => {
-                return Err(CrawlError::ScannerError {
-                    position: self.position,
-                    line: self.line,
-                    lexeme,
-                    reason: "not a keyword".into(),
-                })
-            }
+            Some(token) => Ok(token),
+            None => Ok(Token::Identifier(lexeme)),
         }
     }
 
@@ -224,6 +220,7 @@ impl Scanner {
         match lexeme {
             "clear-fact" => Some(Token::ClearFact),
             "clear-persistent-fact" => Some(Token::ClearPersistentFact),
+            "end" => Some(Token::End),
             "fact?" => Some(Token::FactTest),
             "on" => Some(Token::On),
             "procedure" => Some(Token::Procedure),
@@ -256,7 +253,6 @@ impl Scanner {
         self.source[self.position]
     }
 
-    #[allow(dead_code)]
     fn peek_next(&self) -> char {
         if self.position + 1 >= self.source.len() {
             return EOF_CHAR;
@@ -300,13 +296,25 @@ mod tests {
 
     #[test]
     fn scan_proc_def() {
-        let source = "procedure \"proc\"".chars().collect();
+        let source = "procedure proc".chars().collect();
         let mut scanner = Scanner::new(source);
         let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
         assert_eq!(
             toks,
-            vec![Token::Procedure, Token::Str("proc".into()), Token::Eof,]
+            vec![
+                Token::Procedure,
+                Token::Identifier("proc".into()),
+                Token::Eof,
+            ]
         );
+    }
+
+    #[test]
+    fn scan_proc_call() {
+        let source = "proc".chars().collect();
+        let mut scanner = Scanner::new(source);
+        let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
+        assert_eq!(toks, vec![Token::Identifier("proc".into()), Token::Eof]);
     }
 
     #[test]
@@ -407,6 +415,31 @@ mod tests {
                 Token::SetFact,
                 Token::Str("encounter is neutral".into()),
                 Token::Eof,
+            ]
+        )
+    }
+
+    #[test]
+    fn scan_proc_decl() {
+        let source = "procedure proc\n\troll on table \"table\"\nend"
+            .chars()
+            .collect();
+        let mut scanner = Scanner::new(source);
+        let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
+        assert_eq!(
+            toks,
+            vec![
+                Token::Procedure,
+                Token::Identifier("proc".into()),
+                Token::Newline,
+                Token::Indent,
+                Token::Roll,
+                Token::On,
+                Token::Table,
+                Token::Str("table".into()),
+                Token::Newline,
+                Token::End,
+                Token::Eof
             ]
         )
     }

@@ -8,9 +8,11 @@ procedure day
     # call encounter here?
     fact? "day has random encounter" => roll on table "random encounters"
     reminder "players must consume one day's worth of rations"
+end
 
 procedure encounter
     roll 2d6
         2-4 => set-fact "encounter is hostile"
         5-8 => set-fact "encounter is neutral"
         9-12 => set-fact "encounter is friendly"
+end
