@@ -14,6 +14,8 @@ consequent      -> (set_fact
                    | set_pfact
                    | clear_fact
                    | clear_pfact
+                   | swap_fact,
+                   | swap_pfact,
                    | table_roll
                    )
 matching_roll   -> "roll" ROLL_SPECIFIER NEWLINE (TAB (NUM_RANGE | NUMBER) "=>" consequent NEWLINE)+
@@ -21,7 +23,10 @@ set_fact        -> "set-fact" STRING
 set_pfact       -> "set-persistent-fact" STRING
 clear_fact      -> "clear-fact" STRING
 clear_pfact     -> "clear-persistent-fact" STRING
-fact_check      -> "fact?" STRING
+swap_fact       -> "swap-fact" STRING
+swap_pfact      -> "swap-persistent-fact" STRING
+check_fact      -> "fact?" STRING
+check_pfact      -> "persistent-fact?" STRING
 reminder        -> "reminder" STRING
 dice_roll       -> "roll" (NUM_RANGE | NUMBER) "on" ROLL_SPECIFIER ((+ | -) NUMBER){0,1}
 table_roll      -> "roll" "on" "table" STRING

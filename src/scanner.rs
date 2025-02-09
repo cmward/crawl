@@ -23,6 +23,7 @@ pub enum Token {
     Num(i32),
     NumRange(i32, i32),
     On,
+    PersistentFactTest,
     Plus,
     Procedure,
     Reminder,

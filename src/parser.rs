@@ -22,9 +22,11 @@ pub struct ProcedureDeclaration(String);
 #[derive(Debug, PartialEq)]
 pub enum Consequent {
     SetFact(String),
-    SetPFact(String),
+    SetPersistentFact(String),
     ClearFact(String),
-    ClearPFact(String),
+    ClearPersistentFact(String),
+    SwapFact(String),
+    SwapPersistentFact(String),
     TableRoll(String),
 }
 
@@ -36,6 +38,7 @@ pub enum Antecedent {
         modifier: Option<i32>,
     },
     CheckFact(String),
+    CheckPersistentFact(String),
 }
 
 #[derive(Debug)]
@@ -117,29 +120,37 @@ impl Parser {
     fn if_then(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::If).expect("expected if");
 
-        let antecedent: Result<Antecedent, CrawlError>;
-        match self.peek() {
-            Token::Roll => antecedent = self.dice_roll(),
-            Token::FactTest => antecedent = self.fact_check(),
-            _ => {
-                antecedent = Err(CrawlError::ParserError {
-                    token: format!("{:?}", self.peek()),
-                })
-            }
-        }
-
-        match self.peek() {
-            Token::SetFact => todo!(),
-            Token::SetPersistentFact => todo!(),
-            Token::ClearFact => todo!(),
-            Token::ClearPersistentFact => todo!(),
-            Token::Roll => todo!(),
-        }
+        let antecedent = self.antecedent()?;
+        let consequent = self.consequent()?;
 
         Ok(Statement::IfThen {
-            antecedent: antecedent?,
-            consequent: consequent?,
+            antecedent,
+            consequent,
         })
+    }
+
+    fn antecedent(&mut self) -> Result<Antecedent, CrawlError> {
+        match self.peek() {
+            Token::Roll => self.dice_roll(),
+            Token::FactTest => self.fact_check(),
+            Token::PersistentFactTest => self.persistent_fact_check(),
+            _ => Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            }),
+        }
+    }
+
+    fn consequent(&mut self) -> Result<Consequent, CrawlError> {
+        match self.peek() {
+            Token::SetFact => self.set_fact(),
+            Token::SetPersistentFact => self.set_persistent_fact(),
+            Token::ClearFact => self.clear_fact(),
+            Token::ClearPersistentFact => self.clear_persistent_fact(),
+            Token::SwapFact => self.swap_fact(),
+            Token::SwapPersistentFact => self.swap_persistent_fact(),
+            Token::Roll => self.table_roll(),
+            _ => todo!(),
+        }
     }
 
     fn dice_roll(&mut self) -> Result<Antecedent, CrawlError> {
@@ -202,6 +213,108 @@ impl Parser {
             })
         };
         Ok(Antecedent::CheckFact(fact?))
+    }
+
+    fn persistent_fact_check(&mut self) -> Result<Antecedent, CrawlError> {
+        self.consume(Token::PersistentFactTest)
+            .expect("expected persistent-fact?");
+        let fact = if let Token::Str(fact) = self.peek() {
+            Ok(fact.clone())
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        };
+        Ok(Antecedent::CheckPersistentFact(fact?))
+    }
+
+    fn set_fact(&mut self) -> Result<Consequent, CrawlError> {
+        self.consume(Token::SetFact).expect("expected set-fact");
+        let fact = if let Token::Str(fact) = self.peek() {
+            Ok(fact.clone())
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        };
+        Ok(Consequent::SetFact(fact?))
+    }
+
+    fn set_persistent_fact(&mut self) -> Result<Consequent, CrawlError> {
+        self.consume(Token::SetFact)
+            .expect("expected set-persistent-fact");
+        let fact = if let Token::Str(fact) = self.peek() {
+            Ok(fact.clone())
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        };
+        Ok(Consequent::SetPersistentFact(fact?))
+    }
+
+    fn clear_fact(&mut self) -> Result<Consequent, CrawlError> {
+        self.consume(Token::ClearFact).expect("expected clear-fact");
+        let fact = if let Token::Str(fact) = self.peek() {
+            Ok(fact.clone())
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        };
+        Ok(Consequent::ClearFact(fact?))
+    }
+
+    fn clear_persistent_fact(&mut self) -> Result<Consequent, CrawlError> {
+        self.consume(Token::ClearPersistentFact)
+            .expect("expected clear-persistent-fact");
+        let fact = if let Token::Str(fact) = self.peek() {
+            Ok(fact.clone())
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        };
+        Ok(Consequent::ClearPersistentFact(fact?))
+    }
+
+    fn swap_fact(&mut self) -> Result<Consequent, CrawlError> {
+        self.consume(Token::SwapFact).expect("expected swap-fact");
+        let fact = if let Token::Str(fact) = self.peek() {
+            Ok(fact.clone())
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        };
+        Ok(Consequent::SwapFact(fact?))
+    }
+
+    fn swap_persistent_fact(&mut self) -> Result<Consequent, CrawlError> {
+        self.consume(Token::SwapPersistentFact)
+            .expect("expected swap-persistent-fact");
+        let fact = if let Token::Str(fact) = self.peek() {
+            Ok(fact.clone())
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        };
+        Ok(Consequent::SwapPersistentFact(fact?))
+    }
+
+    fn table_roll(&mut self) -> Result<Consequent, CrawlError> {
+        self.consume(Token::Roll).expect("expected roll");
+        self.consume(Token::On).expect("expected on");
+        self.consume(Token::Table).expect("expected table");
+        let table_identifier = if let Token::Str(table_id) = self.peek() {
+            Ok(table_id.to_string())
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        };
+        Ok(Consequent::TableRoll(table_identifier?))
     }
 
     fn advance(&mut self) {
