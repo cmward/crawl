@@ -3,10 +3,10 @@
 
 procedure day
     swap-fact "weather is " + roll on table "weather"
-    roll 1-3 on 1d6 => set-fact "party is lost"
-    roll 1-3 on 1d6 => set-fact "day has random encounter"
+    if roll 1-3 on 1d6 => set-fact "party is lost"
+    if roll 1-3 on 1d6 => set-fact "day has random encounter"
     # call encounter here?
-    fact? "day has random encounter" => roll on table "random encounters"
+    if fact? "day has random encounter" => roll on table "random encounters"
     reminder "players must consume one day's worth of rations"
 end
 
@@ -15,4 +15,5 @@ procedure encounter
         2-4 => set-fact "encounter is hostile"
         5-8 => set-fact "encounter is neutral"
         9-12 => set-fact "encounter is friendly"
+    end
 end

@@ -16,6 +16,7 @@ pub enum Token {
     Eof,
     FactTest,
     Identifier(String),
+    If,
     Indent,
     Minus,
     Newline,
@@ -222,6 +223,7 @@ impl Scanner {
             "clear-persistent-fact" => Some(Token::ClearPersistentFact),
             "end" => Some(Token::End),
             "fact?" => Some(Token::FactTest),
+            "if" => Some(Token::If),
             "on" => Some(Token::On),
             "procedure" => Some(Token::Procedure),
             "reminder" => Some(Token::Reminder),
@@ -280,12 +282,13 @@ mod tests {
 
     #[test]
     fn scan_if_then() {
-        let source = "\"Hi\" => 5".chars().collect();
+        let source = "if \"Hi\" => 5".chars().collect();
         let mut scanner = Scanner::new(source);
         let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
         assert_eq!(
             toks,
             vec![
+                Token::If,
                 Token::Str("Hi".into()),
                 Token::Arrow,
                 Token::Num(5),
@@ -295,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_proc_def() {
+    fn scan_proc_decl() {
         let source = "procedure proc".chars().collect();
         let mut scanner = Scanner::new(source);
         let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
@@ -389,12 +392,13 @@ mod tests {
     }
 
     #[test]
-    fn scan_matched_roll() {
+    fn scan_matching_roll() {
         let source = "roll 2d6
             \t2-4 => set-fact \"encounter is hostile\"
-            \t5-8 => set-fact \"encounter is neutral\""
-            .chars()
-            .collect();
+            \t5-8 => set-fact \"encounter is neutral\"
+            end"
+        .chars()
+        .collect();
         let mut scanner = Scanner::new(source);
         let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
         assert_eq!(
@@ -414,13 +418,15 @@ mod tests {
                 Token::Arrow,
                 Token::SetFact,
                 Token::Str("encounter is neutral".into()),
+                Token::Newline,
+                Token::End,
                 Token::Eof,
             ]
         )
     }
 
     #[test]
-    fn scan_proc_decl() {
+    fn scan_proc_def() {
         let source = "procedure proc\n\troll on table \"table\"\nend"
             .chars()
             .collect();

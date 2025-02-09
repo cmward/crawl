@@ -29,10 +29,13 @@ pub enum Consequent {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct DiceRoll {
-    target: Token,
-    roll_specifier: Token,
-    modifier: i32,
+pub enum Antecedent {
+    DiceRoll {
+        target: Token,
+        roll_specifier: Token,
+        modifier: Option<i32>,
+    },
+    CheckFact(String),
 }
 
 #[derive(Debug)]
@@ -52,26 +55,28 @@ impl Parser {
     pub fn parse(&mut self) -> Vec<Result<Statement, CrawlError>> {
         let mut statements = Vec::new();
         while !self.is_at_end() {
+            // TODO
             statements.push(Ok(self.statement().unwrap()));
         }
         statements
     }
 
     fn statement(&mut self) -> Result<Statement, CrawlError> {
-        let stmt: Result<Statement, CrawlError>;
-        dbg!(self.peek());
+        let result: Result<Statement, CrawlError>;
         match self.peek() {
-            Token::Procedure => stmt = self.procedure(),
-            Token::Identifier(_) => stmt = self.procedure_call(),
-            // TODO: no catchall
+            Token::Procedure => result = self.procedure(),
+            Token::Identifier(_) => result = self.procedure_call(),
+            Token::If => result = self.if_then(),
             _ => {
-                stmt = Err(CrawlError::ParserError {
+                result = Err(CrawlError::ParserError {
                     token: format!("{:?}", self.peek()),
                 });
             }
         }
+
         self.consume(Token::Newline)?;
-        stmt
+
+        result
     }
 
     fn procedure(&mut self) -> Result<Statement, CrawlError> {
@@ -107,6 +112,74 @@ impl Parser {
                 token: format!("{:?}", self.peek()),
             })
         }
+    }
+
+    fn if_then(&mut self) -> Result<Statement, CrawlError> {
+        self.consume(Token::If).expect("expected if");
+
+        let antecedent: Antecedent;
+        match self.peek() {
+            Token::Roll => antecedent = self.dice_roll()?,
+            Token::FactTest => antecedent = self.fact_check()?,
+            _ => Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            }),
+        }
+
+        Statement::IfThen {
+            antecedent,
+            consequent,
+        }
+    }
+
+    fn dice_roll(&mut self) -> Result<Antecedent, CrawlError> {
+        self.consume(Token::Roll).expect("expected roll");
+
+        let target: Result<Token, CrawlError>;
+        match self.peek() {
+            Token::NumRange(_, _) => target = Ok(self.peek().clone()),
+            Token::Num(_) => target = Ok(self.peek().clone()),
+            _ => {
+                target = Err(CrawlError::ParserError {
+                    token: format!("{:?}", self.peek()),
+                })
+            }
+        }
+        self.advance();
+
+        self.consume(Token::On).expect("expected on");
+
+        let roll_specifier = if let Token::RollSpecifier(_) = self.peek() {
+            Ok(self.peek().clone())
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        };
+        self.advance();
+
+        let mut modifier: Option<i32> = None;
+        match self.peek() {
+            Token::Plus => {
+                self.advance();
+                if let Token::Num(n) = self.peek() {
+                    modifier = Some(*n);
+                }
+            }
+            Token::Minus => {
+                self.advance();
+                if let Token::Num(n) = self.peek() {
+                    modifier = Some(-*n);
+                }
+            }
+            _ => modifier = None,
+        }
+
+        Ok(Antecedent::DiceRoll {
+            target: target?,
+            roll_specifier: roll_specifier?,
+            modifier,
+        })
     }
 
     fn advance(&mut self) {

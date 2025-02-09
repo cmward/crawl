@@ -6,9 +6,10 @@ statement       -> (procedure
                    | consequent
                    | reminder
                    ) NEWLINE
-procedure       -> proc_decl (TAB stmt)+ "end" NEWLINE
+procedure       -> proc_decl (TAB statement)+ "end" NEWLINE
 proc_decl       -> "procedure" IDENT
-if_then         -> (dice_roll | fact_check) "=>" consequent
+if_then         -> "if" antecedent "=>" consequent
+antecedent      -> (dice_roll | check_fact)
 consequent      -> (set_fact
                    | set_pfact
                    | clear_fact
@@ -22,6 +23,6 @@ clear_fact      -> "clear-fact" STRING
 clear_pfact     -> "clear-persistent-fact" STRING
 check_fact      -> "fact?" STRING
 reminder        -> "reminder" STRING
-dice_roll       -> "roll" (NUM_RANGE | NUMBER) "on" ROLL_SPECIFIER ((+ | -) NUMBER)*
+dice_roll       -> "roll" (NUM_RANGE | NUMBER) "on" ROLL_SPECIFIER ((+ | -) NUMBER){0,1}
 table_roll      -> "roll" "on" "table" STRING
 proc_call       -> IDENT
