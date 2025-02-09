@@ -9,7 +9,7 @@ pub enum Statement {
     },
     ProcedureCall(String),
     IfThen {
-        antecedent: Box<Statement>,
+        antecedent: Antecedent,
         consequent: Consequent,
     },
     MatchingRoll,
@@ -117,19 +117,29 @@ impl Parser {
     fn if_then(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::If).expect("expected if");
 
-        let antecedent: Antecedent;
+        let antecedent: Result<Antecedent, CrawlError>;
         match self.peek() {
-            Token::Roll => antecedent = self.dice_roll()?,
-            Token::FactTest => antecedent = self.fact_check()?,
-            _ => Err(CrawlError::ParserError {
-                token: format!("{:?}", self.peek()),
-            }),
+            Token::Roll => antecedent = self.dice_roll(),
+            Token::FactTest => antecedent = self.fact_check(),
+            _ => {
+                antecedent = Err(CrawlError::ParserError {
+                    token: format!("{:?}", self.peek()),
+                })
+            }
         }
 
-        Statement::IfThen {
-            antecedent,
-            consequent,
+        match self.peek() {
+            Token::SetFact => todo!(),
+            Token::SetPersistentFact => todo!(),
+            Token::ClearFact => todo!(),
+            Token::ClearPersistentFact => todo!(),
+            Token::Roll => todo!(),
         }
+
+        Ok(Statement::IfThen {
+            antecedent: antecedent?,
+            consequent: consequent?,
+        })
     }
 
     fn dice_roll(&mut self) -> Result<Antecedent, CrawlError> {
@@ -180,6 +190,18 @@ impl Parser {
             roll_specifier: roll_specifier?,
             modifier,
         })
+    }
+
+    fn fact_check(&mut self) -> Result<Antecedent, CrawlError> {
+        self.consume(Token::FactTest).expect("expected fact?");
+        let fact = if let Token::Str(fact) = self.peek() {
+            Ok(fact.clone())
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        };
+        Ok(Antecedent::CheckFact(fact?))
     }
 
     fn advance(&mut self) {
