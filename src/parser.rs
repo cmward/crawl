@@ -1,6 +1,10 @@
 use crate::error::CrawlError;
 use crate::scanner::Token;
 
+// TODO: lots of logic duplication, e.g., all the fact and dice roll related parsing
+// TODO: replace expects with automatically filled out expected tokens in consume
+// TODO: lots of cloning
+
 #[derive(Debug, PartialEq)]
 pub enum Statement {
     Procedure {
@@ -12,12 +16,22 @@ pub enum Statement {
         antecedent: Antecedent,
         consequent: Consequent,
     },
-    MatchingRoll,
+    MatchingRoll {
+        roll_specifier: Token,
+        modifier: Option<i32>,
+        arms: Vec<MatchingRollArm>,
+    },
     Reminder(String),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct ProcedureDeclaration(String);
+
+#[derive(Debug, PartialEq)]
+pub struct MatchingRollArm {
+    target: Token,
+    consequent: Consequent,
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Consequent {
@@ -65,17 +79,16 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Result<Statement, CrawlError> {
-        let result: Result<Statement, CrawlError>;
-        match self.peek() {
-            Token::Procedure => result = self.procedure(),
-            Token::Identifier(_) => result = self.procedure_call(),
-            Token::If => result = self.if_then(),
-            _ => {
-                result = Err(CrawlError::ParserError {
-                    token: format!("{:?}", self.peek()),
-                });
-            }
-        }
+        let result = match self.peek() {
+            Token::Procedure => self.procedure(),
+            Token::Identifier(_) => self.procedure_call(),
+            Token::If => self.if_then(),
+            Token::Roll => self.matching_roll(),
+            Token::Reminder => self.reminder(),
+            _ => Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            }),
+        };
 
         self.consume(Token::Newline)?;
 
@@ -83,7 +96,6 @@ impl Parser {
     }
 
     fn procedure(&mut self) -> Result<Statement, CrawlError> {
-        // TODO: replace expects with automatically filled out expected tokens in consume
         self.consume(Token::Procedure).expect("expected procedure");
         let declaration: ProcedureDeclaration;
         if let Token::Identifier(name) = self.peek() {
@@ -119,14 +131,88 @@ impl Parser {
 
     fn if_then(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::If).expect("expected if");
-
         let antecedent = self.antecedent()?;
+        self.consume(Token::Arrow).expect("expected arrow");
         let consequent = self.consequent()?;
 
         Ok(Statement::IfThen {
             antecedent,
             consequent,
         })
+    }
+
+    fn matching_roll(&mut self) -> Result<Statement, CrawlError> {
+        self.consume(Token::Roll).expect("expected roll");
+        let roll_specifier = if let Token::RollSpecifier(_) = self.peek() {
+            Ok(self.peek().clone())
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        }?;
+        self.advance();
+
+        let mut modifier: Option<i32> = None;
+        match self.peek() {
+            Token::Plus => {
+                self.advance();
+                if let Token::Num(n) = self.peek() {
+                    modifier = Some(*n);
+                }
+                self.advance();
+            }
+            Token::Minus => {
+                self.advance();
+                if let Token::Num(n) = self.peek() {
+                    modifier = Some(-*n);
+                }
+                self.advance();
+            }
+            _ => modifier = None,
+        }
+        self.consume(Token::Newline).expect("expected newline");
+
+        let mut arms: Vec<MatchingRollArm> = Vec::new();
+        while *self.peek() != Token::End {
+            self.consume(Token::Indent).expect("expected indent");
+
+            let target = match self.peek() {
+                Token::NumRange(_, _) => Ok(self.peek().clone()),
+                Token::Num(_) => Ok(self.peek().clone()),
+                _ => Err(CrawlError::ParserError {
+                    token: format!("{:?}", self.peek()),
+                }),
+            }?;
+            self.advance();
+
+            self.consume(Token::Arrow).expect("expected arrow");
+            let consequent = self.consequent()?;
+            dbg!(&consequent);
+            let arm = MatchingRollArm { target, consequent };
+            arms.push(arm);
+
+            self.consume(Token::Newline).expect("expected newline");
+        }
+
+        Ok(Statement::MatchingRoll {
+            roll_specifier,
+            modifier,
+            arms,
+        })
+    }
+
+    fn reminder(&mut self) -> Result<Statement, CrawlError> {
+        self.consume(Token::Reminder).expect("expected reminder");
+
+        let reminder = if let Token::Str(reminder) = self.peek() {
+            Ok(reminder.clone())
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        }?;
+
+        Ok(Statement::Reminder(reminder))
     }
 
     fn antecedent(&mut self) -> Result<Antecedent, CrawlError> {
@@ -156,16 +242,13 @@ impl Parser {
     fn dice_roll(&mut self) -> Result<Antecedent, CrawlError> {
         self.consume(Token::Roll).expect("expected roll");
 
-        let target: Result<Token, CrawlError>;
-        match self.peek() {
-            Token::NumRange(_, _) => target = Ok(self.peek().clone()),
-            Token::Num(_) => target = Ok(self.peek().clone()),
-            _ => {
-                target = Err(CrawlError::ParserError {
-                    token: format!("{:?}", self.peek()),
-                })
-            }
-        }
+        let target = match self.peek() {
+            Token::NumRange(_, _) => Ok(self.peek().clone()),
+            Token::Num(_) => Ok(self.peek().clone()),
+            _ => Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            }),
+        }?;
         self.advance();
 
         self.consume(Token::On).expect("expected on");
@@ -186,18 +269,20 @@ impl Parser {
                 if let Token::Num(n) = self.peek() {
                     modifier = Some(*n);
                 }
+                self.advance();
             }
             Token::Minus => {
                 self.advance();
                 if let Token::Num(n) = self.peek() {
                     modifier = Some(-*n);
                 }
+                self.advance();
             }
             _ => modifier = None,
         }
 
         Ok(Antecedent::DiceRoll {
-            target: target?,
+            target,
             roll_specifier: roll_specifier?,
             modifier,
         })
@@ -236,12 +321,13 @@ impl Parser {
             Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
             })
-        };
-        Ok(Consequent::SetFact(fact?))
+        }?;
+        self.advance();
+        Ok(Consequent::SetFact(fact))
     }
 
     fn set_persistent_fact(&mut self) -> Result<Consequent, CrawlError> {
-        self.consume(Token::SetFact)
+        self.consume(Token::SetPersistentFact)
             .expect("expected set-persistent-fact");
         let fact = if let Token::Str(fact) = self.peek() {
             Ok(fact.clone())
@@ -249,8 +335,9 @@ impl Parser {
             Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
             })
-        };
-        Ok(Consequent::SetPersistentFact(fact?))
+        }?;
+        self.advance();
+        Ok(Consequent::SetPersistentFact(fact))
     }
 
     fn clear_fact(&mut self) -> Result<Consequent, CrawlError> {
@@ -261,8 +348,9 @@ impl Parser {
             Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
             })
-        };
-        Ok(Consequent::ClearFact(fact?))
+        }?;
+        self.advance();
+        Ok(Consequent::ClearFact(fact))
     }
 
     fn clear_persistent_fact(&mut self) -> Result<Consequent, CrawlError> {
@@ -274,8 +362,9 @@ impl Parser {
             Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
             })
-        };
-        Ok(Consequent::ClearPersistentFact(fact?))
+        }?;
+        self.advance();
+        Ok(Consequent::ClearPersistentFact(fact))
     }
 
     fn swap_fact(&mut self) -> Result<Consequent, CrawlError> {
@@ -286,8 +375,9 @@ impl Parser {
             Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
             })
-        };
-        Ok(Consequent::SwapFact(fact?))
+        }?;
+        self.advance();
+        Ok(Consequent::SwapFact(fact))
     }
 
     fn swap_persistent_fact(&mut self) -> Result<Consequent, CrawlError> {
@@ -299,8 +389,9 @@ impl Parser {
             Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
             })
-        };
-        Ok(Consequent::SwapPersistentFact(fact?))
+        }?;
+        self.advance();
+        Ok(Consequent::SwapPersistentFact(fact))
     }
 
     fn table_roll(&mut self) -> Result<Consequent, CrawlError> {
@@ -313,8 +404,9 @@ impl Parser {
             Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
             })
-        };
-        Ok(Consequent::TableRoll(table_identifier?))
+        }?;
+        self.advance();
+        Ok(Consequent::TableRoll(table_identifier))
     }
 
     fn advance(&mut self) {
@@ -346,7 +438,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_procedure_call() {
+    fn parse_procedure_call() {
         let toks = vec![
             Token::Identifier("proc-name".into()),
             Token::Newline,
@@ -361,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_procedure_def() {
+    fn parse_procedure_def() {
         let toks = vec![
             Token::Procedure,
             Token::Identifier("proc".into()),
@@ -385,5 +477,108 @@ mod tests {
                 body: vec![Box::new(Statement::ProcedureCall("other-proc".into()))]
             }]
         );
+    }
+
+    #[test]
+    fn if_then() {
+        let toks = vec![
+            Token::If,
+            Token::Roll,
+            Token::Num(6),
+            Token::On,
+            Token::RollSpecifier("1d6".into()),
+            Token::Plus,
+            Token::Num(1),
+            Token::Arrow,
+            Token::SetFact,
+            Token::Str("cool!".into()),
+        ];
+        let parsed = Parser::new(toks).if_then();
+        assert_eq!(
+            parsed.unwrap(),
+            Statement::IfThen {
+                antecedent: Antecedent::DiceRoll {
+                    target: Token::Num(6),
+                    roll_specifier: Token::RollSpecifier("1d6".into()),
+                    modifier: Some(1),
+                },
+                consequent: Consequent::SetFact("cool!".into())
+            }
+        )
+    }
+
+    #[test]
+    fn matching_roll() {
+        let toks = vec![
+            Token::Roll,
+            Token::RollSpecifier("2d20".into()),
+            Token::Minus,
+            Token::Num(2),
+            Token::Newline,
+            Token::Indent,
+            Token::Num(2),
+            Token::Arrow,
+            Token::SetFact,
+            Token::Str("you died".into()),
+            Token::Newline,
+            Token::Indent,
+            Token::NumRange(3, 40),
+            Token::Arrow,
+            Token::SetFact,
+            Token::Str("you're alright".into()),
+            Token::Newline,
+            Token::End,
+        ];
+        let parsed = Parser::new(toks).matching_roll();
+        assert_eq!(
+            parsed.unwrap(),
+            Statement::MatchingRoll {
+                roll_specifier: Token::RollSpecifier("2d20".into()),
+                modifier: Some(-2),
+                arms: vec![
+                    MatchingRollArm {
+                        target: Token::Num(2),
+                        consequent: Consequent::SetFact("you died".into())
+                    },
+                    MatchingRollArm {
+                        target: Token::NumRange(3, 40),
+                        consequent: Consequent::SetFact("you're alright".into())
+                    },
+                ]
+            }
+        )
+    }
+
+    #[test]
+    fn reminder() {
+        let toks = vec![Token::Reminder, Token::Str("don't forget to eat".into())];
+        let parsed = Parser::new(toks).reminder();
+        assert_eq!(
+            parsed.unwrap(),
+            Statement::Reminder("don't forget to eat".into())
+        )
+    }
+
+    #[test]
+    fn set_fact() {
+        let toks = vec![Token::SetFact, Token::Str("weather is nice".into())];
+        let parsed = Parser::new(toks).set_fact();
+        assert_eq!(
+            parsed.unwrap(),
+            Consequent::SetFact("weather is nice".into())
+        )
+    }
+
+    #[test]
+    fn set_pfact() {
+        let toks = vec![
+            Token::SetPersistentFact,
+            Token::Str("weather is nice".into()),
+        ];
+        let parsed = Parser::new(toks).set_persistent_fact();
+        assert_eq!(
+            parsed.unwrap(),
+            Consequent::SetPersistentFact("weather is nice".into())
+        )
     }
 }
