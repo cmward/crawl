@@ -17,8 +17,7 @@ pub enum Statement {
         consequent: Consequent,
     },
     MatchingRoll {
-        roll_specifier: Token,
-        modifier: Option<i32>,
+        roll_specifier: ModifiedRollSpecifier,
         arms: Vec<MatchingRollArm>,
     },
     Reminder(String),
@@ -26,6 +25,12 @@ pub enum Statement {
 
 #[derive(Debug, PartialEq)]
 pub struct ProcedureDeclaration(String);
+
+#[derive(Debug, PartialEq)]
+pub struct ModifiedRollSpecifier {
+    roll_specifier: Token,
+    modifier: Option<i32>,
+}
 
 #[derive(Debug, PartialEq)]
 pub struct MatchingRollArm {
@@ -48,8 +53,7 @@ pub enum Consequent {
 pub enum Antecedent {
     DiceRoll {
         target: Token,
-        roll_specifier: Token,
-        modifier: Option<i32>,
+        roll_specifier: ModifiedRollSpecifier,
     },
     CheckFact(String),
     CheckPersistentFact(String),
@@ -143,6 +147,39 @@ impl Parser {
 
     fn matching_roll(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::Roll).expect("expected roll");
+        let roll_specifier = self.modified_specifier()?;
+
+        self.consume(Token::Newline).expect("expected newline");
+
+        let mut arms: Vec<MatchingRollArm> = Vec::new();
+        while *self.peek() != Token::End {
+            self.consume(Token::Indent).expect("expected indent");
+
+            let target = match self.peek() {
+                Token::NumRange(_, _) => Ok(self.peek().clone()),
+                Token::Num(_) => Ok(self.peek().clone()),
+                _ => Err(CrawlError::ParserError {
+                    token: format!("{:?}", self.peek()),
+                }),
+            }?;
+            self.advance();
+
+            self.consume(Token::Arrow).expect("expected arrow");
+            let consequent = self.consequent()?;
+            dbg!(&consequent);
+            let arm = MatchingRollArm { target, consequent };
+            arms.push(arm);
+
+            self.consume(Token::Newline).expect("expected newline");
+        }
+
+        Ok(Statement::MatchingRoll {
+            roll_specifier,
+            arms,
+        })
+    }
+
+    fn modified_specifier(&mut self) -> Result<ModifiedRollSpecifier, CrawlError> {
         let roll_specifier = if let Token::RollSpecifier(_) = self.peek() {
             Ok(self.peek().clone())
         } else {
@@ -170,34 +207,10 @@ impl Parser {
             }
             _ => modifier = None,
         }
-        self.consume(Token::Newline).expect("expected newline");
 
-        let mut arms: Vec<MatchingRollArm> = Vec::new();
-        while *self.peek() != Token::End {
-            self.consume(Token::Indent).expect("expected indent");
-
-            let target = match self.peek() {
-                Token::NumRange(_, _) => Ok(self.peek().clone()),
-                Token::Num(_) => Ok(self.peek().clone()),
-                _ => Err(CrawlError::ParserError {
-                    token: format!("{:?}", self.peek()),
-                }),
-            }?;
-            self.advance();
-
-            self.consume(Token::Arrow).expect("expected arrow");
-            let consequent = self.consequent()?;
-            dbg!(&consequent);
-            let arm = MatchingRollArm { target, consequent };
-            arms.push(arm);
-
-            self.consume(Token::Newline).expect("expected newline");
-        }
-
-        Ok(Statement::MatchingRoll {
+        Ok(ModifiedRollSpecifier {
             roll_specifier,
             modifier,
-            arms,
         })
     }
 
@@ -235,7 +248,9 @@ impl Parser {
             Token::SwapFact => self.swap_fact(),
             Token::SwapPersistentFact => self.swap_persistent_fact(),
             Token::Roll => self.table_roll(),
-            _ => todo!(),
+            _ => Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            }),
         }
     }
 
@@ -253,38 +268,11 @@ impl Parser {
 
         self.consume(Token::On).expect("expected on");
 
-        let roll_specifier = if let Token::RollSpecifier(_) = self.peek() {
-            Ok(self.peek().clone())
-        } else {
-            Err(CrawlError::ParserError {
-                token: format!("{:?}", self.peek()),
-            })
-        };
-        self.advance();
-
-        let mut modifier: Option<i32> = None;
-        match self.peek() {
-            Token::Plus => {
-                self.advance();
-                if let Token::Num(n) = self.peek() {
-                    modifier = Some(*n);
-                }
-                self.advance();
-            }
-            Token::Minus => {
-                self.advance();
-                if let Token::Num(n) = self.peek() {
-                    modifier = Some(-*n);
-                }
-                self.advance();
-            }
-            _ => modifier = None,
-        }
+        let roll_specifier = self.modified_specifier()?;
 
         Ok(Antecedent::DiceRoll {
             target,
-            roll_specifier: roll_specifier?,
-            modifier,
+            roll_specifier,
         })
     }
 
@@ -499,8 +487,10 @@ mod tests {
             Statement::IfThen {
                 antecedent: Antecedent::DiceRoll {
                     target: Token::Num(6),
-                    roll_specifier: Token::RollSpecifier("1d6".into()),
-                    modifier: Some(1),
+                    roll_specifier: ModifiedRollSpecifier {
+                        roll_specifier: Token::RollSpecifier("1d6".into()),
+                        modifier: Some(1),
+                    },
                 },
                 consequent: Consequent::SetFact("cool!".into())
             }
@@ -533,8 +523,10 @@ mod tests {
         assert_eq!(
             parsed.unwrap(),
             Statement::MatchingRoll {
-                roll_specifier: Token::RollSpecifier("2d20".into()),
-                modifier: Some(-2),
+                roll_specifier: ModifiedRollSpecifier {
+                    roll_specifier: Token::RollSpecifier("2d20".into()),
+                    modifier: Some(-2),
+                },
                 arms: vec![
                     MatchingRollArm {
                         target: Token::Num(2),
