@@ -1,21 +1,34 @@
-program         -> procedure* EOF
-procedure       -> proc_def (NEWLINE stmt)+
-proc_def        -> "procedure" STRING
-stmt            -> TAB (if_then | expr)
-if_then         -> (dice_roll | fact_check) "=>" expr
-expr            -> dice_roll
-                   | table_roll
-                   | set_fact
-                   | set_pfact
-                   | clear_fact
-                   | clear_pfact
-                   | check_fact
-                   | reminder_expr
-dice_roll       -> "roll" (NUM_RANGE| NUMBER) "on" ROLL_SPECIFIER ((+ | -) NUMBER)*
-table_roll      -> "roll" "on" "table" STRING
-set_fact        -> set-fact STRING
-set_pfact       -> set-persistent-fact STRING
-clear_fact      -> clear-fact STRING
-clear_pfact     -> clear-persistent-fact STRING
-check_fact      -> fact? STRING
-reminder_expr   -> reminder STRING
+program            -> statement* EOF
+statement          -> (procedure
+                      | proc_call  # allowed in other procedure? what does that do?
+                      | if_then 
+                      | matching_roll
+                      | consequent
+                      | reminder
+                      ) NEWLINE
+procedure          -> proc_decl (INDENT statement)+ "end" NEWLINE
+proc_decl          -> "procedure" IDENT
+if_then            -> "if" antecedent "=>" consequent
+antecedent         -> (dice_roll | check_fact)
+consequent         -> (set_fact
+                      | set_pfact
+                      | clear_fact
+                      | clear_pfact
+                      | swap_fact,
+                      | swap_pfact,
+                      | table_roll
+                      )
+matching_roll      -> "roll" modified_specifier NEWLINE (INDENT (NUM_RANGE | NUMBER) "=>" consequent NEWLINE)+ "end"
+set_fact           -> "set-fact" STRING
+set_pfact          -> "set-persistent-fact" STRING
+clear_fact         -> "clear-fact" STRING
+clear_pfact        -> "clear-persistent-fact" STRING
+swap_fact          -> "swap-fact" STRING
+swap_pfact         -> "swap-persistent-fact" STRING
+check_fact         -> "fact?" STRING
+check_pfact        -> "persistent-fact?" STRING
+reminder           -> "reminder" STRING
+dice_roll          -> "roll" (NUM_RANGE | NUMBER) "on" modified_specifier
+modified_specifier -> ROLL_SPECIFIER ((+ | -) NUMBER){0,1}
+table_roll         -> "roll" "on" "table" STRING
+proc_call          -> IDENT

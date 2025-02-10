@@ -9,4 +9,6 @@ pub enum CrawlError {
         lexeme: String,
         reason: String,
     },
+    #[error("parser error (token: {token:?})")]
+    ParserError { token: String },
 }

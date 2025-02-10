@@ -1,3 +1,6 @@
+// This was an initial sketch of dice rolling. Will probably end up nuking this, but leaving
+// it in case it ends up being helpful for the interpreter.
+
 use core::fmt;
 use std::{cmp::Ordering, collections::HashMap, str::FromStr};
 

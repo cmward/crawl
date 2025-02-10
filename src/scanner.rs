@@ -6,20 +6,24 @@ use crate::error::CrawlError;
 
 const EOF_CHAR: char = '\0';
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
     Arrow,
-    Calendar,
     ClearFact,
     ClearPersistentFact,
     Concat,
+    End,
     Eof,
     FactTest,
+    Identifier(String),
+    If,
+    Indent,
     Minus,
     Newline,
     Num(i32),
     NumRange(i32, i32),
     On,
+    PersistentFactTest,
     Plus,
     Procedure,
     Reminder,
@@ -30,9 +34,7 @@ pub enum Token {
     Str(String),
     SwapFact,
     SwapPersistentFact,
-    Tab,
     Table,
-    Tick,
 }
 
 #[derive(Debug)]
@@ -74,121 +76,18 @@ impl Scanner {
             self.advance();
             match ch {
                 // Dice rolls, ranges & numbers
-                n if n.is_numeric() => {
-                    let mut next_ch = self.curr_char();
-                    let mut is_dice_roll = false;
-                    let mut is_roll_range = false;
-                    while !self.is_at_end() {
-                        match next_ch {
-                            'd' => {
-                                if !self.peek_next().is_numeric() {
-                                    return Err(CrawlError::ScannerError {
-                                        position: self.position,
-                                        line: self.line,
-                                        lexeme: self.source[self.start..self.position]
-                                            .iter()
-                                            .collect::<String>(),
-                                        reason: String::from(
-                                            "roll specifier must be NUMBER 'd' NUMBER",
-                                        ),
-                                    });
-                                }
-                                is_dice_roll = true;
-                            }
-                            '-' => is_roll_range = true,
-                            nch if nch.is_numeric() => {}
-                            _ => break,
-                        }
-                        self.advance();
-                        next_ch = self.curr_char();
-                    }
-                    let lexeme = self.source[self.start..self.position]
-                        .iter()
-                        .collect::<String>();
-                    match (is_dice_roll, is_roll_range) {
-                        (true, false) => return Ok(Token::RollSpecifier(lexeme)),
-                        (false, true) => {
-                            let range_nums = lexeme.split('-').collect::<Vec<&str>>();
-                            let range_min = range_nums
-                                .first()
-                                .expect("range min should be a value")
-                                .parse::<i32>()
-                                .expect("range min should be a number");
-                            let range_max = range_nums
-                                .last()
-                                .expect("range max should be a value")
-                                .parse::<i32>()
-                                .expect("range max should be a number");
-                            return Ok(Token::NumRange(range_min, range_max));
-                        }
-                        (false, false) => {
-                            return Ok(Token::Num(
-                                lexeme.parse::<i32>().expect("should be a number"),
-                            ));
-                        }
-                        (true, true) => {
-                            return Err(CrawlError::ScannerError {
-                                position: self.position,
-                                line: self.line,
-                                lexeme,
-                                reason: String::from("can't be a dice roll and dice range"),
-                            })
-                        }
-                    }
-                }
+                n if n.is_numeric() => return self.scan_numeric(),
 
                 // Quoted text - Str
-                '"' => {
-                    while self.peek() != '"' && !self.is_at_end() {
-                        self.advance();
-                        if self.curr_char() == '\n' {
-                            self.line += 1;
-                        }
-                    }
-                    if self.is_at_end() {
-                        return Err(CrawlError::ScannerError {
-                            position: self.position,
-                            line: self.line,
-                            lexeme: self.source[self.start..self.position].iter().collect(),
-                            reason: String::from("unterminated string, expected closing '\"'"),
-                        });
-                    }
-                    // pass closing "
-                    self.advance();
-                    return Ok(Token::Str(
-                        self.source[self.start + 1..self.position - 1]
-                            .iter()
-                            .collect(),
-                    ));
-                }
+                '"' => return self.scan_str(),
 
                 // Text - keywords
-                c if c.is_alphabetic() => {
-                    let mut next_ch = self.curr_char();
-                    // function names can have hyphens in them
-                    while !self.is_at_end() && (next_ch.is_alphabetic() || next_ch == '-') {
-                        self.advance();
-                        next_ch = self.curr_char();
-                    }
-                    let lexeme: String = self.source[self.start..self.position].iter().collect();
-                    match Self::token_for_keyword(&lexeme) {
-                        Some(token) => return Ok(token),
-                        None => {
-                            return Err(CrawlError::ScannerError {
-                                position: self.position,
-                                line: self.line,
-                                lexeme,
-                                reason: String::from("not a keyword"),
-                            })
-                        }
-                    }
-                }
+                c if c.is_alphabetic() => return self.scan_symbol(),
 
-                ' ' => {
-                    self.start = self.position;
-                }
+                // This is the only reason this needs to be wrapped in a loop
+                ' ' => self.start = self.position,
 
-                '\t' => return Ok(Token::Tab),
+                '\t' => return Ok(Token::Indent),
 
                 '\n' => {
                     self.line += 1;
@@ -203,7 +102,7 @@ impl Scanner {
                         position: self.position,
                         line: self.line,
                         lexeme: self.source[self.start..self.position].iter().collect(),
-                        reason: String::from("expected '>' after '='"),
+                        reason: "expected '>' after '='".into(),
                     });
                 }
 
@@ -215,20 +114,117 @@ impl Scanner {
                     return Err(CrawlError::ScannerError {
                         position: self.position,
                         line: self.line,
-                        lexeme: String::from(c),
-                        reason: String::from("unexpected character"),
+                        lexeme: c.into(),
+                        reason: "unexpected character".into(),
                     })
                 }
             }
         }
     }
 
+    fn scan_numeric(&mut self) -> Result<Token, CrawlError> {
+        let mut next_ch = self.curr_char();
+        let mut is_dice_roll = false;
+        let mut is_roll_range = false;
+        while !self.is_at_end() {
+            match next_ch {
+                'd' => {
+                    if !self.peek_next().is_numeric() {
+                        return Err(CrawlError::ScannerError {
+                            position: self.position,
+                            line: self.line,
+                            lexeme: self.source[self.start..self.position]
+                                .iter()
+                                .collect::<String>(),
+                            reason: "roll specifier must be NUMBER 'd' NUMBER".into(),
+                        });
+                    }
+                    is_dice_roll = true;
+                }
+                '-' => is_roll_range = true,
+                nch if nch.is_numeric() => {}
+                _ => break,
+            }
+            self.advance();
+            next_ch = self.curr_char();
+        }
+        let lexeme = self.source[self.start..self.position]
+            .iter()
+            .collect::<String>();
+        match (is_dice_roll, is_roll_range) {
+            (true, false) => Ok(Token::RollSpecifier(lexeme)),
+            (false, true) => {
+                let range_nums = lexeme.split('-').collect::<Vec<&str>>();
+                // TODO: produce ScannerErrors here
+                let range_min = range_nums
+                    .first()
+                    .expect("range min should be a value")
+                    .parse::<i32>()
+                    .expect("range min should be a number");
+                let range_max = range_nums
+                    .last()
+                    .expect("range max should be a value")
+                    .parse::<i32>()
+                    .expect("range max should be a number");
+                Ok(Token::NumRange(range_min, range_max))
+            }
+            (false, false) => Ok(Token::Num(
+                lexeme.parse::<i32>().expect("should be a number"),
+            )),
+            (true, true) => Err(CrawlError::ScannerError {
+                position: self.position,
+                line: self.line,
+                lexeme,
+                reason: "can't be a dice roll and dice range".into(),
+            }),
+        }
+    }
+
+    fn scan_str(&mut self) -> Result<Token, CrawlError> {
+        while self.peek() != '"' && !self.is_at_end() {
+            self.advance();
+            if self.curr_char() == '\n' {
+                self.line += 1;
+            }
+        }
+        if self.is_at_end() {
+            return Err(CrawlError::ScannerError {
+                position: self.position,
+                line: self.line,
+                lexeme: self.source[self.start..self.position].iter().collect(),
+                reason: "unterminated string, expected closing '\"'".into(),
+            });
+        }
+        // pass closing "
+        self.advance();
+        Ok(Token::Str(
+            self.source[self.start + 1..self.position - 1]
+                .iter()
+                .collect(),
+        ))
+    }
+
+    fn scan_symbol(&mut self) -> Result<Token, CrawlError> {
+        let mut next_ch = self.curr_char();
+        // function names can have hyphens in them
+        while !self.is_at_end() && (next_ch.is_alphabetic() || next_ch == '-') {
+            self.advance();
+            next_ch = self.curr_char();
+        }
+        let lexeme: String = self.source[self.start..self.position].iter().collect();
+        match Self::token_for_keyword(&lexeme) {
+            Some(token) => Ok(token),
+            None => Ok(Token::Identifier(lexeme)),
+        }
+    }
+
     fn token_for_keyword(lexeme: &str) -> Option<Token> {
         match lexeme {
-            "calendar" => Some(Token::Calendar),
             "clear-fact" => Some(Token::ClearFact),
             "clear-persistent-fact" => Some(Token::ClearPersistentFact),
+            "end" => Some(Token::End),
             "fact?" => Some(Token::FactTest),
+            "if" => Some(Token::If),
             "on" => Some(Token::On),
             "procedure" => Some(Token::Procedure),
             "reminder" => Some(Token::Reminder),
@@ -238,7 +234,6 @@ impl Scanner {
             "swap-fact" => Some(Token::SwapFact),
             "swap-persistent-fact" => Some(Token::SwapPersistentFact),
             "table" => Some(Token::Table),
-            "tick" => Some(Token::Tick),
             _ => None,
         }
     }
@@ -261,7 +256,6 @@ impl Scanner {
         self.source[self.position]
     }
 
-    #[allow(dead_code)]
     fn peek_next(&self) -> char {
         if self.position + 1 >= self.source.len() {
             return EOF_CHAR;
@@ -289,13 +283,14 @@ mod tests {
 
     #[test]
     fn scan_if_then() {
-        let source = "\"Hi\" => 5".chars().collect();
+        let source = "if \"Hi\" => 5".chars().collect();
         let mut scanner = Scanner::new(source);
         let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
         assert_eq!(
             toks,
             vec![
-                Token::Str(String::from("Hi")),
+                Token::If,
+                Token::Str("Hi".into()),
                 Token::Arrow,
                 Token::Num(5),
                 Token::Eof,
@@ -304,18 +299,26 @@ mod tests {
     }
 
     #[test]
-    fn scan_proc_def() {
-        let source = "procedure \"proc\"".chars().collect();
+    fn scan_proc_decl() {
+        let source = "procedure proc".chars().collect();
         let mut scanner = Scanner::new(source);
         let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
         assert_eq!(
             toks,
             vec![
                 Token::Procedure,
-                Token::Str(String::from("proc")),
+                Token::Identifier("proc".into()),
                 Token::Eof,
             ]
         );
+    }
+
+    #[test]
+    fn scan_proc_call() {
+        let source = "proc".chars().collect();
+        let mut scanner = Scanner::new(source);
+        let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
+        assert_eq!(toks, vec![Token::Identifier("proc".into()), Token::Eof]);
     }
 
     #[test]
@@ -339,12 +342,12 @@ mod tests {
                 Token::Roll,
                 Token::NumRange(1, 3),
                 Token::On,
-                Token::RollSpecifier(String::from("1d6")),
+                Token::RollSpecifier("1d6".into()),
                 Token::Plus,
                 Token::Num(1),
                 Token::Arrow,
                 Token::SetFact,
-                Token::Str(String::from("party is lost")),
+                Token::Str("party is lost".into()),
                 Token::Eof,
             ]
         );
@@ -361,7 +364,7 @@ mod tests {
                 Token::Roll,
                 Token::Num(99),
                 Token::On,
-                Token::RollSpecifier(String::from("3d100")),
+                Token::RollSpecifier("3d100".into()),
                 Token::Eof,
             ]
         )
@@ -378,15 +381,74 @@ mod tests {
             toks,
             vec![
                 Token::SetFact,
-                Token::Str(String::from("weather is ")),
+                Token::Str("weather is ".into()),
                 Token::Plus,
                 Token::Roll,
                 Token::On,
                 Token::Table,
-                Token::Str(String::from("weather")),
+                Token::Str("weather".into()),
                 Token::Eof,
             ]
         );
+    }
+
+    #[test]
+    fn scan_matching_roll() {
+        let source = "roll 2d6
+            \t2-4 => set-fact \"encounter is hostile\"
+            \t5-8 => set-fact \"encounter is neutral\"
+            end"
+        .chars()
+        .collect();
+        let mut scanner = Scanner::new(source);
+        let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
+        assert_eq!(
+            toks,
+            vec![
+                Token::Roll,
+                Token::RollSpecifier("2d6".into()),
+                Token::Newline,
+                Token::Indent,
+                Token::NumRange(2, 4),
+                Token::Arrow,
+                Token::SetFact,
+                Token::Str("encounter is hostile".into()),
+                Token::Newline,
+                Token::Indent,
+                Token::NumRange(5, 8),
+                Token::Arrow,
+                Token::SetFact,
+                Token::Str("encounter is neutral".into()),
+                Token::Newline,
+                Token::End,
+                Token::Eof,
+            ]
+        )
+    }
+
+    #[test]
+    fn scan_proc_def() {
+        let source = "procedure proc\n\troll on table \"table\"\nend"
+            .chars()
+            .collect();
+        let mut scanner = Scanner::new(source);
+        let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
+        assert_eq!(
+            toks,
+            vec![
+                Token::Procedure,
+                Token::Identifier("proc".into()),
+                Token::Newline,
+                Token::Indent,
+                Token::Roll,
+                Token::On,
+                Token::Table,
+                Token::Str("table".into()),
+                Token::Newline,
+                Token::End,
+                Token::Eof
+            ]
+        )
     }
 
     #[test]
