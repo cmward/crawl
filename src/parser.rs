@@ -28,7 +28,7 @@ pub struct ProcedureDeclaration(String);
 
 #[derive(Debug, PartialEq)]
 pub struct ModifiedRollSpecifier {
-    roll_specifier: Token,
+    base_roll_specifier: Token,
     modifier: Option<i32>,
 }
 
@@ -180,7 +180,7 @@ impl Parser {
     }
 
     fn modified_specifier(&mut self) -> Result<ModifiedRollSpecifier, CrawlError> {
-        let roll_specifier = if let Token::RollSpecifier(_) = self.peek() {
+        let base_roll_specifier = if let Token::RollSpecifier(_) = self.peek() {
             Ok(self.peek().clone())
         } else {
             Err(CrawlError::ParserError {
@@ -209,7 +209,7 @@ impl Parser {
         }
 
         Ok(ModifiedRollSpecifier {
-            roll_specifier,
+            base_roll_specifier,
             modifier,
         })
     }
@@ -488,7 +488,7 @@ mod tests {
                 antecedent: Antecedent::DiceRoll {
                     target: Token::Num(6),
                     roll_specifier: ModifiedRollSpecifier {
-                        roll_specifier: Token::RollSpecifier("1d6".into()),
+                        base_roll_specifier: Token::RollSpecifier("1d6".into()),
                         modifier: Some(1),
                     },
                 },
@@ -524,7 +524,7 @@ mod tests {
             parsed.unwrap(),
             Statement::MatchingRoll {
                 roll_specifier: ModifiedRollSpecifier {
-                    roll_specifier: Token::RollSpecifier("2d20".into()),
+                    base_roll_specifier: Token::RollSpecifier("2d20".into()),
                     modifier: Some(-2),
                 },
                 arms: vec![
@@ -538,16 +538,6 @@ mod tests {
                     },
                 ]
             }
-        )
-    }
-
-    #[test]
-    fn reminder() {
-        let toks = vec![Token::Reminder, Token::Str("don't forget to eat".into())];
-        let parsed = Parser::new(toks).reminder();
-        assert_eq!(
-            parsed.unwrap(),
-            Statement::Reminder("don't forget to eat".into())
         )
     }
 
@@ -572,5 +562,96 @@ mod tests {
             parsed.unwrap(),
             Consequent::SetPersistentFact("weather is nice".into())
         )
+    }
+
+    #[test]
+    fn clear_fact() {
+        let toks = vec![Token::ClearFact, Token::Str("weather is nice".into())];
+        let parsed = Parser::new(toks).clear_fact();
+        assert_eq!(
+            parsed.unwrap(),
+            Consequent::ClearFact("weather is nice".into())
+        )
+    }
+
+    #[test]
+    fn clear_pfact() {
+        let toks = vec![
+            Token::ClearPersistentFact,
+            Token::Str("weather is nice".into()),
+        ];
+        let parsed = Parser::new(toks).clear_persistent_fact();
+        assert_eq!(
+            parsed.unwrap(),
+            Consequent::ClearPersistentFact("weather is nice".into())
+        )
+    }
+
+    #[test]
+    fn swap_fact() {
+        let toks = vec![Token::SwapFact, Token::Str("weather is nice".into())];
+        let parsed = Parser::new(toks).swap_fact();
+        assert_eq!(
+            parsed.unwrap(),
+            Consequent::SwapFact("weather is nice".into())
+        )
+    }
+
+    #[test]
+    fn swap_persistent_fact() {
+        let toks = vec![
+            Token::SwapPersistentFact,
+            Token::Str("weather is nice".into()),
+        ];
+        let parsed = Parser::new(toks).swap_persistent_fact();
+        assert_eq!(
+            parsed.unwrap(),
+            Consequent::SwapPersistentFact("weather is nice".into())
+        )
+    }
+
+    #[test]
+    fn reminder() {
+        let toks = vec![Token::Reminder, Token::Str("don't forget to eat".into())];
+        let parsed = Parser::new(toks).reminder();
+        assert_eq!(
+            parsed.unwrap(),
+            Statement::Reminder("don't forget to eat".into())
+        )
+    }
+
+    #[test]
+    fn dice_roll() {
+        let toks = vec![
+            Token::Roll,
+            Token::NumRange(1, 5),
+            Token::On,
+            Token::RollSpecifier("1d12".into()),
+            Token::Plus,
+            Token::Num(5),
+        ];
+        let parsed = Parser::new(toks).dice_roll();
+        assert_eq!(
+            parsed.unwrap(),
+            Antecedent::DiceRoll {
+                target: Token::NumRange(1, 5),
+                roll_specifier: ModifiedRollSpecifier {
+                    base_roll_specifier: Token::RollSpecifier("1d12".into()),
+                    modifier: Some(5),
+                }
+            }
+        )
+    }
+
+    #[test]
+    fn table_roll() {
+        let toks = vec![
+            Token::Roll,
+            Token::On,
+            Token::Table,
+            Token::Str("table-t1".into()),
+        ];
+        let parsed = Parser::new(toks).table_roll();
+        assert_eq!(parsed.unwrap(), Consequent::TableRoll("table-t1".into()))
     }
 }
