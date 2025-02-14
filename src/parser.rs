@@ -1,7 +1,6 @@
 use crate::error::CrawlError;
 use crate::scanner::Token;
 
-// TODO: lots of logic duplication, e.g., all the fact and dice roll related parsing
 // TODO: replace expects with automatically filled out expected tokens in consume
 // TODO: lots of cloning
 
@@ -76,8 +75,7 @@ impl Parser {
     pub fn parse(&mut self) -> Vec<Result<Statement, CrawlError>> {
         let mut statements = Vec::new();
         while !self.is_at_end() {
-            // TODO
-            statements.push(Ok(self.statement().unwrap()));
+            statements.push(self.statement());
         }
         statements
     }

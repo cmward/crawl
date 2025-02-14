@@ -11,4 +11,6 @@ pub enum CrawlError {
     },
     #[error("parser error (token: {token:?})")]
     ParserError { token: String },
+    #[error("interpreter error (reason: {reason:?})")]
+    InterpreterError { reason: String },
 }
