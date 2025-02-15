@@ -2,14 +2,14 @@ use std::collections::HashMap;
 
 use crate::error::CrawlError;
 use crate::facts::FactDatabase;
-use crate::parser::{Antecedent, Consequent, Statement};
+use crate::parser::{Antecedent, Statement};
 
 #[derive(Debug, PartialEq)]
 pub enum StatementRecord {
     Reminder(String),
     IfThen {
         antecedent: bool,
-        consequent: Box<StatementRecord>,
+        consequent: Option<Box<StatementRecord>>,
     },
 }
 
@@ -21,6 +21,12 @@ pub struct CrawlProcedure {
 pub struct Interpreter {
     procedures: HashMap<String, CrawlProcedure>,
     persistent_facts: FactDatabase,
+}
+
+impl Default for Interpreter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Interpreter {
@@ -44,42 +50,28 @@ impl Interpreter {
 
     fn evaluate_statement(&mut self, statement: &Statement) -> Result<StatementRecord, CrawlError> {
         match statement {
+            Statement::ClearFact(fact) => todo!(),
+            Statement::ClearPersistentFact(fact) => todo!(),
             Statement::IfThen {
                 antecedent,
                 consequent,
-            } => todo!(),
-            Statement::Reminder(reminder) => self.evaluate_reminder(&statement),
-            Statement::Procedure { declaration, body } => todo!(),
-            Statement::ProcedureCall(procedure_name) => todo!(),
+            } => self.evaluate_if_then(antecedent, consequent),
             Statement::MatchingRoll {
                 roll_specifier,
                 arms,
             } => todo!(),
+            Statement::Procedure { declaration, body } => todo!(),
+            Statement::ProcedureCall(procedure_name) => todo!(),
+            Statement::Reminder(reminder) => self.evaluate_reminder(reminder),
+            Statement::SetFact(fact) => todo!(),
+            Statement::SetPersistentFact(fact) => todo!(),
+            Statement::SwapFact(fact) => todo!(),
+            Statement::SwapPersistentFact(fact) => todo!(),
+            Statement::TableRoll(table_name) => todo!(),
         }
     }
 
-    fn evaluate_if_then(
-        &mut self,
-        antecedent: &Antecedent,
-        consequent: &Consequent,
-    ) -> Result<StatementRecord, CrawlError> {
-        todo!()
-    }
-
-    fn evaluate_reminder(&mut self, reminder: &Statement) -> Result<StatementRecord, CrawlError> {
-        if let Statement::Reminder(reminder) = reminder {
-            Ok(StatementRecord::Reminder(reminder.clone()))
-        } else {
-            Err(CrawlError::InterpreterError {
-                reason: "expected a parsed reminder".into(),
-            })
-        }
-    }
-
-    fn evaluate_antecedent(
-        &mut self,
-        antecedent: &Antecedent,
-    ) -> Result<bool, CrawlError> {
+    fn evaluate_antecedent(&mut self, antecedent: &Antecedent) -> Result<bool, CrawlError> {
         match antecedent {
             Antecedent::CheckFact(fact) => todo!(),
             Antecedent::CheckPersistentFact(fact) => todo!(),
@@ -92,17 +84,44 @@ impl Interpreter {
 
     fn evaluate_consequent(
         &mut self,
-        consequent: &Consequent,
+        consequent: &Statement,
     ) -> Result<StatementRecord, CrawlError> {
         match consequent {
-            Consequent::SetFact(fact) => todo!(),
-            Consequent::ClearFact(fact) => todo!(),
-            Consequent::SwapFact(fact) => todo!(),
-            Consequent::SetPersistentFact(fact) => todo!(),
-            Consequent::ClearPersistentFact(fact) => todo!(),
-            Consequent::SwapPersistentFact(fact) => todo!(),
-            Consequent::TableRoll(table_name) => todo!(),
+            Statement::ClearFact(fact) => todo!(),
+            Statement::ClearPersistentFact(fact) => todo!(),
+            Statement::SetFact(fact) => todo!(),
+            Statement::SetPersistentFact(fact) => todo!(),
+            Statement::Reminder(reminder) => self.evaluate_reminder(reminder),
+            Statement::SwapFact(fact) => todo!(),
+            Statement::SwapPersistentFact(fact) => todo!(),
+            Statement::TableRoll(table_name) => todo!(),
+            _ => Err(CrawlError::InterpreterError {
+                reason: "Invalid statement as consequent".into(),
+            }),
         }
+    }
+
+    fn evaluate_if_then(
+        &mut self,
+        antecedent: &Antecedent,
+        consequent: &Statement,
+    ) -> Result<StatementRecord, CrawlError> {
+        let antecedent_value = self.evaluate_antecedent(antecedent)?;
+        if antecedent_value {
+            Ok(StatementRecord::IfThen {
+                antecedent: antecedent_value,
+                consequent: Some(Box::new(self.evaluate_consequent(consequent)?)),
+            })
+        } else {
+            Ok(StatementRecord::IfThen {
+                antecedent: antecedent_value,
+                consequent: None,
+            })
+        }
+    }
+
+    fn evaluate_reminder(&mut self, reminder: &String) -> Result<StatementRecord, CrawlError> {
+        Ok(StatementRecord::Reminder(reminder.clone()))
     }
 }
 

@@ -4,7 +4,6 @@ statement          -> (procedure
                       | if_then 
                       | matching_roll
                       | consequent
-                      | reminder
                       ) NEWLINE
 procedure          -> proc_decl (INDENT statement)+ "end" NEWLINE
 proc_decl          -> "procedure" IDENT
@@ -17,6 +16,7 @@ consequent         -> (set_fact
                       | swap_fact,
                       | swap_pfact,
                       | table_roll
+                      | reminder
                       )
 matching_roll      -> "roll" modified_specifier NEWLINE (INDENT (NUM_RANGE | NUMBER) "=>" consequent NEWLINE)+ "end"
 set_fact           -> "set-fact" STRING

@@ -6,20 +6,27 @@ use crate::scanner::Token;
 
 #[derive(Debug, PartialEq)]
 pub enum Statement {
-    Procedure {
-        declaration: ProcedureDeclaration,
-        body: Vec<Box<Statement>>,
-    },
-    ProcedureCall(String),
+    ClearFact(String),
+    ClearPersistentFact(String),
     IfThen {
         antecedent: Antecedent,
-        consequent: Consequent,
+        consequent: Box<Statement>,
     },
     MatchingRoll {
         roll_specifier: ModifiedRollSpecifier,
         arms: Vec<MatchingRollArm>,
     },
+    Procedure {
+        declaration: ProcedureDeclaration,
+        body: Vec<Box<Statement>>,
+    },
+    ProcedureCall(String),
     Reminder(String),
+    SetFact(String),
+    SetPersistentFact(String),
+    SwapFact(String),
+    SwapPersistentFact(String),
+    TableRoll(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -34,28 +41,17 @@ pub struct ModifiedRollSpecifier {
 #[derive(Debug, PartialEq)]
 pub struct MatchingRollArm {
     target: Token,
-    consequent: Consequent,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Consequent {
-    SetFact(String),
-    SetPersistentFact(String),
-    ClearFact(String),
-    ClearPersistentFact(String),
-    SwapFact(String),
-    SwapPersistentFact(String),
-    TableRoll(String),
+    consequent: Statement,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Antecedent {
+    CheckFact(String),
+    CheckPersistentFact(String),
     DiceRoll {
         target: Token,
         roll_specifier: ModifiedRollSpecifier,
     },
-    CheckFact(String),
-    CheckPersistentFact(String),
 }
 
 #[derive(Debug)]
@@ -82,19 +78,35 @@ impl Parser {
 
     fn statement(&mut self) -> Result<Statement, CrawlError> {
         let result = match self.peek() {
-            Token::Procedure => self.procedure(),
+            Token::ClearFact => self.clear_fact(),
+            Token::ClearPersistentFact => self.clear_persistent_fact(),
             Token::Identifier(_) => self.procedure_call(),
             Token::If => self.if_then(),
-            Token::Roll => self.matching_roll(),
-            Token::Reminder => self.reminder(),
+            Token::Procedure => self.procedure(),
+            Token::Reminder => dbg!(self.reminder()),
+            Token::Roll => match self.peek_next() {
+                Token::Num(_) | Token::NumRange(_, _) => Err(CrawlError::ParserError {
+                    token: format!("{:?}", self.peek_next()),
+                }),
+                Token::On => return self.table_roll(),
+                Token::RollSpecifier(_) => self.matching_roll(),
+                _ => Err(CrawlError::ParserError {
+                    token: format!("{:?}", self.peek_next()),
+                }),
+            },
+            Token::SetFact => self.set_fact(),
+            Token::SetPersistentFact => self.set_persistent_fact(),
+            Token::SwapFact => self.swap_fact(),
+            Token::SwapPersistentFact => self.swap_persistent_fact(),
             _ => Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
             }),
         };
+        dbg!(&result);
 
         self.consume(Token::Newline)?;
 
-        result
+        dbg!(result)
     }
 
     fn procedure(&mut self) -> Result<Statement, CrawlError> {
@@ -117,7 +129,7 @@ impl Parser {
         }
         self.consume(Token::End).expect("expected end");
 
-        return Ok(Statement::Procedure { declaration, body });
+        Ok(Statement::Procedure { declaration, body })
     }
 
     fn procedure_call(&mut self) -> Result<Statement, CrawlError> {
@@ -134,12 +146,16 @@ impl Parser {
     fn if_then(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::If).expect("expected if");
         let antecedent = self.antecedent()?;
+
+        dbg!(&antecedent);
+        dbg!(self.peek());
+
         self.consume(Token::Arrow).expect("expected arrow");
         let consequent = self.consequent()?;
 
         Ok(Statement::IfThen {
             antecedent,
-            consequent,
+            consequent: Box::new(consequent),
         })
     }
 
@@ -164,7 +180,6 @@ impl Parser {
 
             self.consume(Token::Arrow).expect("expected arrow");
             let consequent = self.consequent()?;
-            dbg!(&consequent);
             let arm = MatchingRollArm { target, consequent };
             arms.push(arm);
 
@@ -223,6 +238,8 @@ impl Parser {
             })
         }?;
 
+        self.advance();
+
         Ok(Statement::Reminder(reminder))
     }
 
@@ -237,7 +254,7 @@ impl Parser {
         }
     }
 
-    fn consequent(&mut self) -> Result<Consequent, CrawlError> {
+    fn consequent(&mut self) -> Result<Statement, CrawlError> {
         match self.peek() {
             Token::SetFact => self.set_fact(),
             Token::SetPersistentFact => self.set_persistent_fact(),
@@ -245,6 +262,7 @@ impl Parser {
             Token::ClearPersistentFact => self.clear_persistent_fact(),
             Token::SwapFact => self.swap_fact(),
             Token::SwapPersistentFact => self.swap_persistent_fact(),
+            Token::Reminder => self.reminder(),
             Token::Roll => self.table_roll(),
             _ => Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
@@ -262,6 +280,7 @@ impl Parser {
                 token: format!("{:?}", self.peek()),
             }),
         }?;
+
         self.advance();
 
         self.consume(Token::On).expect("expected on");
@@ -276,6 +295,7 @@ impl Parser {
 
     fn fact_check(&mut self) -> Result<Antecedent, CrawlError> {
         self.consume(Token::FactTest).expect("expected fact?");
+
         let fact = if let Token::Str(fact) = self.peek() {
             Ok(fact.clone())
         } else {
@@ -283,12 +303,16 @@ impl Parser {
                 token: format!("{:?}", self.peek()),
             })
         };
+
+        self.advance();
+
         Ok(Antecedent::CheckFact(fact?))
     }
 
     fn persistent_fact_check(&mut self) -> Result<Antecedent, CrawlError> {
         self.consume(Token::PersistentFactTest)
             .expect("expected persistent-fact?");
+
         let fact = if let Token::Str(fact) = self.peek() {
             Ok(fact.clone())
         } else {
@@ -296,11 +320,15 @@ impl Parser {
                 token: format!("{:?}", self.peek()),
             })
         };
+
+        self.advance();
+
         Ok(Antecedent::CheckPersistentFact(fact?))
     }
 
-    fn set_fact(&mut self) -> Result<Consequent, CrawlError> {
+    fn set_fact(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::SetFact).expect("expected set-fact");
+
         let fact = if let Token::Str(fact) = self.peek() {
             Ok(fact.clone())
         } else {
@@ -308,11 +336,13 @@ impl Parser {
                 token: format!("{:?}", self.peek()),
             })
         }?;
+
         self.advance();
-        Ok(Consequent::SetFact(fact))
+
+        Ok(Statement::SetFact(fact))
     }
 
-    fn set_persistent_fact(&mut self) -> Result<Consequent, CrawlError> {
+    fn set_persistent_fact(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::SetPersistentFact)
             .expect("expected set-persistent-fact");
         let fact = if let Token::Str(fact) = self.peek() {
@@ -322,11 +352,13 @@ impl Parser {
                 token: format!("{:?}", self.peek()),
             })
         }?;
+
         self.advance();
-        Ok(Consequent::SetPersistentFact(fact))
+
+        Ok(Statement::SetPersistentFact(fact))
     }
 
-    fn clear_fact(&mut self) -> Result<Consequent, CrawlError> {
+    fn clear_fact(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::ClearFact).expect("expected clear-fact");
         let fact = if let Token::Str(fact) = self.peek() {
             Ok(fact.clone())
@@ -335,11 +367,13 @@ impl Parser {
                 token: format!("{:?}", self.peek()),
             })
         }?;
+
         self.advance();
-        Ok(Consequent::ClearFact(fact))
+
+        Ok(Statement::ClearFact(fact))
     }
 
-    fn clear_persistent_fact(&mut self) -> Result<Consequent, CrawlError> {
+    fn clear_persistent_fact(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::ClearPersistentFact)
             .expect("expected clear-persistent-fact");
         let fact = if let Token::Str(fact) = self.peek() {
@@ -349,11 +383,13 @@ impl Parser {
                 token: format!("{:?}", self.peek()),
             })
         }?;
+
         self.advance();
-        Ok(Consequent::ClearPersistentFact(fact))
+
+        Ok(Statement::ClearPersistentFact(fact))
     }
 
-    fn swap_fact(&mut self) -> Result<Consequent, CrawlError> {
+    fn swap_fact(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::SwapFact).expect("expected swap-fact");
         let fact = if let Token::Str(fact) = self.peek() {
             Ok(fact.clone())
@@ -362,11 +398,13 @@ impl Parser {
                 token: format!("{:?}", self.peek()),
             })
         }?;
+
         self.advance();
-        Ok(Consequent::SwapFact(fact))
+
+        Ok(Statement::SwapFact(fact))
     }
 
-    fn swap_persistent_fact(&mut self) -> Result<Consequent, CrawlError> {
+    fn swap_persistent_fact(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::SwapPersistentFact)
             .expect("expected swap-persistent-fact");
         let fact = if let Token::Str(fact) = self.peek() {
@@ -376,11 +414,13 @@ impl Parser {
                 token: format!("{:?}", self.peek()),
             })
         }?;
+
         self.advance();
-        Ok(Consequent::SwapPersistentFact(fact))
+
+        Ok(Statement::SwapPersistentFact(fact))
     }
 
-    fn table_roll(&mut self) -> Result<Consequent, CrawlError> {
+    fn table_roll(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::Roll).expect("expected roll");
         self.consume(Token::On).expect("expected on");
         self.consume(Token::Table).expect("expected table");
@@ -391,8 +431,10 @@ impl Parser {
                 token: format!("{:?}", self.peek()),
             })
         }?;
+
         self.advance();
-        Ok(Consequent::TableRoll(table_identifier))
+
+        Ok(Statement::TableRoll(table_identifier))
     }
 
     fn advance(&mut self) {
@@ -412,6 +454,13 @@ impl Parser {
 
     fn peek(&self) -> &Token {
         &self.tokens[self.position]
+    }
+
+    fn peek_next(&self) -> &Token {
+        if self.tokens.len() > self.position + 1 {
+            return &self.tokens[self.position + 1];
+        }
+        &Token::Eof
     }
 
     fn is_at_end(&self) -> bool {
@@ -466,6 +515,24 @@ mod tests {
     }
 
     #[test]
+    fn parse_reminder() {
+        let toks = vec![
+            Token::Reminder,
+            Token::Str("don't forget to eat".into()),
+            Token::Newline,
+            Token::Eof,
+        ];
+        let parsed = Parser::new(toks).parse();
+        assert_eq!(
+            parsed
+                .into_iter()
+                .map(|a| a.unwrap())
+                .collect::<Vec<Statement>>(),
+            vec![Statement::Reminder("don't forget to eat".into())],
+        )
+    }
+
+    #[test]
     fn if_then() {
         let toks = vec![
             Token::If,
@@ -490,7 +557,7 @@ mod tests {
                         modifier: Some(1),
                     },
                 },
-                consequent: Consequent::SetFact("cool!".into())
+                consequent: Box::new(Statement::SetFact("cool!".into())),
             }
         )
     }
@@ -528,11 +595,11 @@ mod tests {
                 arms: vec![
                     MatchingRollArm {
                         target: Token::Num(2),
-                        consequent: Consequent::SetFact("you died".into())
+                        consequent: Statement::SetFact("you died".into())
                     },
                     MatchingRollArm {
                         target: Token::NumRange(3, 40),
-                        consequent: Consequent::SetFact("you're alright".into())
+                        consequent: Statement::SetFact("you're alright".into())
                     },
                 ]
             }
@@ -545,7 +612,7 @@ mod tests {
         let parsed = Parser::new(toks).set_fact();
         assert_eq!(
             parsed.unwrap(),
-            Consequent::SetFact("weather is nice".into())
+            Statement::SetFact("weather is nice".into())
         )
     }
 
@@ -558,7 +625,7 @@ mod tests {
         let parsed = Parser::new(toks).set_persistent_fact();
         assert_eq!(
             parsed.unwrap(),
-            Consequent::SetPersistentFact("weather is nice".into())
+            Statement::SetPersistentFact("weather is nice".into())
         )
     }
 
@@ -568,7 +635,7 @@ mod tests {
         let parsed = Parser::new(toks).clear_fact();
         assert_eq!(
             parsed.unwrap(),
-            Consequent::ClearFact("weather is nice".into())
+            Statement::ClearFact("weather is nice".into())
         )
     }
 
@@ -581,7 +648,7 @@ mod tests {
         let parsed = Parser::new(toks).clear_persistent_fact();
         assert_eq!(
             parsed.unwrap(),
-            Consequent::ClearPersistentFact("weather is nice".into())
+            Statement::ClearPersistentFact("weather is nice".into())
         )
     }
 
@@ -591,7 +658,7 @@ mod tests {
         let parsed = Parser::new(toks).swap_fact();
         assert_eq!(
             parsed.unwrap(),
-            Consequent::SwapFact("weather is nice".into())
+            Statement::SwapFact("weather is nice".into())
         )
     }
 
@@ -604,7 +671,7 @@ mod tests {
         let parsed = Parser::new(toks).swap_persistent_fact();
         assert_eq!(
             parsed.unwrap(),
-            Consequent::SwapPersistentFact("weather is nice".into())
+            Statement::SwapPersistentFact("weather is nice".into())
         )
     }
 
@@ -650,6 +717,6 @@ mod tests {
             Token::Str("table-t1".into()),
         ];
         let parsed = Parser::new(toks).table_roll();
-        assert_eq!(parsed.unwrap(), Consequent::TableRoll("table-t1".into()))
+        assert_eq!(parsed.unwrap(), Statement::TableRoll("table-t1".into()))
     }
 }

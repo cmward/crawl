@@ -4,7 +4,7 @@ use std::{cmp::Ordering, collections::HashMap};
 use rand::Rng;
 
 #[derive(Debug)]
-struct DieRollResult(i32);
+pub struct DieRollResult(i32);
 
 impl fmt::Display for DieRollResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -13,7 +13,7 @@ impl fmt::Display for DieRollResult {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct Die(i32);
+pub struct Die(i32);
 
 impl Die {
     fn roll(&self) -> DieRollResult {
@@ -22,12 +22,12 @@ impl Die {
 }
 
 #[derive(Debug)]
-struct DicePoolRollResult {
-    results: Vec<DieRollResult>,
+pub struct DicePoolRollResult {
+    pub results: Vec<DieRollResult>,
 }
 
 #[derive(Debug)]
-struct DicePool {
+pub struct DicePool {
     dice: Vec<Die>,
 }
 
@@ -55,9 +55,9 @@ impl fmt::Display for DicePool {
 
 #[derive(Debug)]
 pub struct DiceRollResult {
-    pool_result: DicePoolRollResult,
-    modifier: i32,
-    total: i32,
+    pub pool_result: DicePoolRollResult,
+    pub modifier: i32,
+    pub total: i32,
 }
 
 impl fmt::Display for DiceRollResult {
