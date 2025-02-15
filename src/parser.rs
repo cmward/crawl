@@ -90,12 +90,12 @@ impl Parser {
             Token::Reminder => self.reminder(),
             Token::Roll => match self.peek_next() {
                 Token::Num(_) | Token::NumRange(_, _) => Err(CrawlError::ParserError {
-                    token: format!("{:?}", self.peek_next()),
+                    token: format!("{:?}", self.peek()),
                 }),
                 Token::On => return self.table_roll(),
                 Token::RollSpecifier(_) => self.matching_roll(),
                 _ => Err(CrawlError::ParserError {
-                    token: format!("{:?}", self.peek_next()),
+                    token: format!("{:?}", self.peek()),
                 }),
             },
             Token::SetFact => self.set_fact(),
@@ -106,6 +106,14 @@ impl Parser {
                 token: format!("{:?}", self.peek()),
             }),
         };
+
+        // Try to move past errors to sync up to the next statement.
+        // Should probably try something more intentional - if the result
+        // is an error, advance until we can consume a newline, and try for
+        // a new statement.
+        if result.is_err() {
+            self.advance();
+        }
 
         self.consume(Token::Newline)?;
 
@@ -438,7 +446,7 @@ impl Parser {
     }
 
     fn consume(&mut self, token: Token) -> Result<Token, CrawlError> {
-        if token == *self.peek() {
+        if *self.peek() == token {
             self.advance();
             Ok(token)
         } else {

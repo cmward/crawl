@@ -4,7 +4,7 @@ use crate::scanner::Token;
 use core::fmt;
 use rand::Rng;
 use regex::Regex;
-use std::{cmp::Ordering, collections::HashMap};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct DieRollResult(i32);
@@ -127,15 +127,5 @@ impl TryFrom<ModifiedRollSpecifier> for DiceRoll {
 
     fn try_from(value: ModifiedRollSpecifier) -> Result<Self, Self::Error> {
         Self::try_from(&value)
-    }
-}
-
-impl fmt::Display for DiceRoll {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.modifier.cmp(&0) {
-            Ordering::Greater => write!(f, "{} + {}", self.dice_pool, self.modifier),
-            Ordering::Less => write!(f, "{} - {}", self.dice_pool, self.modifier.abs()),
-            Ordering::Equal => write!(f, "{}", self.dice_pool),
-        }
     }
 }
