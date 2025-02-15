@@ -1,7 +1,10 @@
+use crate::error::CrawlError;
+use crate::parser::ModifiedRollSpecifier;
+use crate::scanner::Token;
 use core::fmt;
-use std::{cmp::Ordering, collections::HashMap};
-
 use rand::Rng;
+use regex::Regex;
+use std::{cmp::Ordering, collections::HashMap};
 
 #[derive(Debug)]
 pub struct DieRollResult(i32);
@@ -13,7 +16,7 @@ impl fmt::Display for DieRollResult {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Die(i32);
+pub struct Die(pub i32);
 
 impl Die {
     fn roll(&self) -> DieRollResult {
@@ -28,7 +31,7 @@ pub struct DicePoolRollResult {
 
 #[derive(Debug)]
 pub struct DicePool {
-    dice: Vec<Die>,
+    pub dice: Vec<Die>,
 }
 
 impl DicePool {
@@ -68,8 +71,8 @@ impl fmt::Display for DiceRollResult {
 
 #[derive(Debug)]
 pub struct DiceRoll {
-    dice_pool: DicePool,
-    modifier: i32,
+    pub dice_pool: DicePool,
+    pub modifier: i32,
 }
 
 impl DiceRoll {
@@ -81,6 +84,49 @@ impl DiceRoll {
             modifier: self.modifier,
             total: unmodified_total + self.modifier,
         }
+    }
+}
+
+impl TryFrom<&ModifiedRollSpecifier> for DiceRoll {
+    type Error = CrawlError;
+
+    fn try_from(value: &ModifiedRollSpecifier) -> Result<Self, Self::Error> {
+        if let Token::RollSpecifier(ref spec) = value.base_roll_specifier {
+            let re = Regex::new(r"(?<n_dice>\d+)*d(?<n_sides>\d+)").unwrap();
+            let captures = re
+                .captures(&spec)
+                .ok_or(CrawlError::ParserError {
+                    token: format!("{:?}", value),
+                })
+                .expect("failed to parse roll specifier");
+
+            let n_dice = captures["n_dice"].parse().expect("failed to parse n_dice");
+            let n_sides = captures["n_sides"]
+                .parse()
+                .expect("failed to parse n_sides");
+
+            let mut dice = Vec::new();
+            for _ in 0..n_dice {
+                dice.push(Die(n_sides));
+            }
+
+            Ok(DiceRoll {
+                dice_pool: DicePool { dice },
+                modifier: value.modifier,
+            })
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", value),
+            })
+        }
+    }
+}
+
+impl TryFrom<ModifiedRollSpecifier> for DiceRoll {
+    type Error = CrawlError;
+
+    fn try_from(value: ModifiedRollSpecifier) -> Result<Self, Self::Error> {
+        Self::try_from(&value)
     }
 }
 

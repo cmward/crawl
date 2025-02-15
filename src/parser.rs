@@ -34,8 +34,10 @@ pub struct ProcedureDeclaration(String);
 
 #[derive(Debug, PartialEq)]
 pub struct ModifiedRollSpecifier {
-    base_roll_specifier: Token,
-    modifier: Option<i32>,
+    // These fields are public so DiceRoll can implement TryFrom<ModifiedRollSpecifier>.
+    // Don't really like it, but idk what the best thing to do is.
+    pub base_roll_specifier: Token,
+    pub modifier: i32,
 }
 
 #[derive(Debug, PartialEq)]
@@ -60,6 +62,8 @@ pub struct Parser {
     position: usize, // Index of the token to be recognized
 }
 
+// TODO: `reason` in parser error
+
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Parser {
@@ -71,7 +75,7 @@ impl Parser {
     pub fn parse(&mut self) -> Vec<Result<Statement, CrawlError>> {
         let mut statements = Vec::new();
         while !self.is_at_end() {
-            statements.push(self.statement());
+            statements.push(Ok(self.statement().unwrap()));
         }
         statements
     }
@@ -83,7 +87,7 @@ impl Parser {
             Token::Identifier(_) => self.procedure_call(),
             Token::If => self.if_then(),
             Token::Procedure => self.procedure(),
-            Token::Reminder => dbg!(self.reminder()),
+            Token::Reminder => self.reminder(),
             Token::Roll => match self.peek_next() {
                 Token::Num(_) | Token::NumRange(_, _) => Err(CrawlError::ParserError {
                     token: format!("{:?}", self.peek_next()),
@@ -102,11 +106,10 @@ impl Parser {
                 token: format!("{:?}", self.peek()),
             }),
         };
-        dbg!(&result);
 
         self.consume(Token::Newline)?;
 
-        dbg!(result)
+        result
     }
 
     fn procedure(&mut self) -> Result<Statement, CrawlError> {
@@ -146,9 +149,6 @@ impl Parser {
     fn if_then(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::If).expect("expected if");
         let antecedent = self.antecedent()?;
-
-        dbg!(&antecedent);
-        dbg!(self.peek());
 
         self.consume(Token::Arrow).expect("expected arrow");
         let consequent = self.consequent()?;
@@ -202,23 +202,23 @@ impl Parser {
         }?;
         self.advance();
 
-        let mut modifier: Option<i32> = None;
+        let mut modifier: i32 = 0;
         match self.peek() {
             Token::Plus => {
                 self.advance();
                 if let Token::Num(n) = self.peek() {
-                    modifier = Some(*n);
+                    modifier = *n;
                 }
                 self.advance();
             }
             Token::Minus => {
                 self.advance();
                 if let Token::Num(n) = self.peek() {
-                    modifier = Some(-*n);
+                    modifier = -*n;
                 }
                 self.advance();
             }
-            _ => modifier = None,
+            _ => modifier = 0,
         }
 
         Ok(ModifiedRollSpecifier {
@@ -272,7 +272,6 @@ impl Parser {
 
     fn dice_roll(&mut self) -> Result<Antecedent, CrawlError> {
         self.consume(Token::Roll).expect("expected roll");
-
         let target = match self.peek() {
             Token::NumRange(_, _) => Ok(self.peek().clone()),
             Token::Num(_) => Ok(self.peek().clone()),
@@ -295,7 +294,6 @@ impl Parser {
 
     fn fact_check(&mut self) -> Result<Antecedent, CrawlError> {
         self.consume(Token::FactTest).expect("expected fact?");
-
         let fact = if let Token::Str(fact) = self.peek() {
             Ok(fact.clone())
         } else {
@@ -312,7 +310,6 @@ impl Parser {
     fn persistent_fact_check(&mut self) -> Result<Antecedent, CrawlError> {
         self.consume(Token::PersistentFactTest)
             .expect("expected persistent-fact?");
-
         let fact = if let Token::Str(fact) = self.peek() {
             Ok(fact.clone())
         } else {
@@ -328,7 +325,6 @@ impl Parser {
 
     fn set_fact(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::SetFact).expect("expected set-fact");
-
         let fact = if let Token::Str(fact) = self.peek() {
             Ok(fact.clone())
         } else {
@@ -554,7 +550,7 @@ mod tests {
                     target: Token::Num(6),
                     roll_specifier: ModifiedRollSpecifier {
                         base_roll_specifier: Token::RollSpecifier("1d6".into()),
-                        modifier: Some(1),
+                        modifier: 1,
                     },
                 },
                 consequent: Box::new(Statement::SetFact("cool!".into())),
@@ -590,7 +586,7 @@ mod tests {
             Statement::MatchingRoll {
                 roll_specifier: ModifiedRollSpecifier {
                     base_roll_specifier: Token::RollSpecifier("2d20".into()),
-                    modifier: Some(-2),
+                    modifier: -2,
                 },
                 arms: vec![
                     MatchingRollArm {
@@ -702,7 +698,7 @@ mod tests {
                 target: Token::NumRange(1, 5),
                 roll_specifier: ModifiedRollSpecifier {
                     base_roll_specifier: Token::RollSpecifier("1d12".into()),
-                    modifier: Some(5),
+                    modifier: 5,
                 }
             }
         )

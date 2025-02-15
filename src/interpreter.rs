@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
+use crate::dice::DiceRoll;
 use crate::error::CrawlError;
 use crate::facts::FactDatabase;
-use crate::parser::{Antecedent, Statement};
+use crate::parser::{Antecedent, ModifiedRollSpecifier, Statement};
+use crate::scanner::Token;
 
 #[derive(Debug, PartialEq)]
 pub enum StatementRecord {
@@ -78,7 +80,7 @@ impl Interpreter {
             Antecedent::DiceRoll {
                 target,
                 roll_specifier,
-            } => todo!(),
+            } => self.evaluate_dice_roll(target, roll_specifier),
         }
     }
 
@@ -123,6 +125,23 @@ impl Interpreter {
     fn evaluate_reminder(&mut self, reminder: &String) -> Result<StatementRecord, CrawlError> {
         Ok(StatementRecord::Reminder(reminder.clone()))
     }
+
+    fn evaluate_dice_roll(
+        &mut self,
+        target: &Token,
+        modified_roll_specifier: &ModifiedRollSpecifier,
+    ) -> Result<bool, CrawlError> {
+        let roll: DiceRoll = modified_roll_specifier.try_into()?;
+        let roll_result = roll.roll();
+        dbg!(&roll_result);
+        match target {
+            Token::Num(n) => Ok(roll_result.total == *n),
+            Token::NumRange(min, max) => Ok(*min <= roll_result.total && roll_result.total <= *max),
+            _ => Err(CrawlError::InterpreterError {
+                reason: "invalid roll target".into(),
+            }),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -130,7 +149,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn interpret_reminder() {
+    fn reminder() {
         let ast = Statement::Reminder("players must eat rations daily".into());
         let value = Interpreter::new().evaluate_statement(&ast).unwrap();
         assert_eq!(

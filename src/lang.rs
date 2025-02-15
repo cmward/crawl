@@ -16,7 +16,7 @@ impl Crawl {
             .map(|tok| tok.unwrap())
             .collect();
 
-        println!("{toks:?}");
+        println!("{toks:?}\n");
 
         let ast = Parser::new(toks)
             .parse()
@@ -24,7 +24,7 @@ impl Crawl {
             .map(|node| node.unwrap())
             .collect();
 
-        println!("{ast:?}");
+        println!("{ast:?}\n");
 
         let records: Vec<StatementRecord> = Interpreter::new()
             .interpret(ast)
@@ -32,6 +32,6 @@ impl Crawl {
             .map(|record| record.unwrap())
             .collect();
 
-        println!("{records:?}");
+        println!("{records:?}\n");
     }
 }
