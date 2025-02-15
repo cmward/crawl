@@ -4,7 +4,7 @@ use crate::scanner::Token;
 // TODO: replace expects with automatically filled out expected tokens in consume
 // TODO: lots of cloning
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Statement {
     ClearFact(String),
     ClearPersistentFact(String),
@@ -29,10 +29,10 @@ pub enum Statement {
     TableRoll(String),
 }
 
-#[derive(Debug, PartialEq)]
-pub struct ProcedureDeclaration(String);
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProcedureDeclaration(pub String);
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ModifiedRollSpecifier {
     // These fields are public so DiceRoll can implement TryFrom<ModifiedRollSpecifier>.
     // Don't really like it, but idk what the best thing to do is.
@@ -40,13 +40,13 @@ pub struct ModifiedRollSpecifier {
     pub modifier: i32,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MatchingRollArm {
-    target: Token,
-    consequent: Statement,
+    pub target: Token,
+    pub consequent: Statement,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Antecedent {
     CheckFact(String),
     CheckPersistentFact(String),

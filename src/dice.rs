@@ -94,7 +94,7 @@ impl TryFrom<&ModifiedRollSpecifier> for DiceRoll {
         if let Token::RollSpecifier(ref spec) = value.base_roll_specifier {
             let re = Regex::new(r"(?<n_dice>\d+)*d(?<n_sides>\d+)").unwrap();
             let captures = re
-                .captures(&spec)
+                .captures(spec)
                 .ok_or(CrawlError::ParserError {
                     token: format!("{:?}", value),
                 })

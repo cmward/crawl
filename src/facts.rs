@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct FactDatabase;
 
 impl FactDatabase {
