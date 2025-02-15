@@ -75,7 +75,7 @@ impl Parser {
     pub fn parse(&mut self) -> Vec<Result<Statement, CrawlError>> {
         let mut statements = Vec::new();
         while !self.is_at_end() {
-            statements.push(Ok(self.statement().unwrap()));
+            statements.push(self.statement());
         }
         statements
     }
@@ -526,6 +526,21 @@ mod tests {
                 .collect::<Vec<Statement>>(),
             vec![Statement::Reminder("don't forget to eat".into())],
         )
+    }
+
+    #[test]
+    #[should_panic]
+    fn parse_statement_no_nl() {
+        let toks = vec![
+            Token::Reminder,
+            Token::Str("statements end with a newline".into()),
+            Token::Eof,
+        ];
+        let _: Vec<Statement> = Parser::new(toks)
+            .parse()
+            .into_iter()
+            .map(|a| a.unwrap())
+            .collect();
     }
 
     #[test]
