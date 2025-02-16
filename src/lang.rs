@@ -1,4 +1,4 @@
-use crate::interpreter::{Interpreter, StatementRecord};
+use crate::interpreter::{self, Interpreter, StatementRecord};
 use crate::parser::Parser;
 use crate::scanner::Scanner;
 
@@ -26,12 +26,15 @@ impl Crawl {
 
         println!("{ast:?}\n");
 
-        let records: Vec<StatementRecord> = Interpreter::new()
+        let mut interpreter = Interpreter::new();
+        let records: Vec<StatementRecord> = interpreter
             .interpret(ast)
             .into_iter()
             .map(|record| record.unwrap())
             .collect();
 
         println!("{records:?}\n");
+
+        println!("{:?}", interpreter.local_facts);
     }
 }

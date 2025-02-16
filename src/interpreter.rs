@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::dice::DiceRoll;
 use crate::error::CrawlError;
 use crate::facts::FactDatabase;
+use crate::lang::Crawl;
 use crate::parser::{
     Antecedent, MatchingRollArm, ModifiedRollSpecifier, ProcedureDeclaration, Statement,
 };
@@ -10,6 +11,10 @@ use crate::scanner::Token;
 
 #[derive(Debug, PartialEq)]
 pub enum StatementRecord {
+    CheckFact(bool),
+    CheckPersistentFact(bool),
+    ClearFact(String),
+    ClearPersistentFact(String),
     IfThen {
         antecedent: bool,
         consequent: Option<Box<StatementRecord>>,
@@ -23,43 +28,40 @@ pub enum StatementRecord {
     },
     ProcedureDefinition(String),
     Reminder(String),
+    SetFact(String),
+    SetPersistentFact(String),
 }
 
 #[derive(Debug)]
 pub struct CrawlProcedure {
     identifier: String,
     body: Vec<Statement>,
-    facts: FactDatabase,
 }
 
 impl CrawlProcedure {
-    pub fn new(identifier: String, body: Vec<Statement>, facts: FactDatabase) -> Self {
-        CrawlProcedure {
-            identifier,
-            body,
-            facts,
-        }
+    pub fn new(identifier: String, body: Vec<Statement>) -> Self {
+        CrawlProcedure { identifier, body }
     }
 }
 
-pub struct Interpreter<'a> {
+pub struct Interpreter {
     procedures: HashMap<String, CrawlProcedure>,
-    persistent_facts: FactDatabase,
-    facts_stack: Vec<&'a FactDatabase>,
+    pub persistent_facts: FactDatabase,
+    pub local_facts: FactDatabase,
 }
 
-impl<'a> Default for Interpreter<'a> {
+impl Default for Interpreter {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'a> Interpreter<'a> {
+impl Interpreter {
     pub fn new() -> Self {
         Interpreter {
             procedures: HashMap::new(),
-            persistent_facts: FactDatabase,
-            facts_stack: Vec::new(),
+            persistent_facts: FactDatabase::default(),
+            local_facts: FactDatabase::default(),
         }
     }
 
@@ -76,8 +78,10 @@ impl<'a> Interpreter<'a> {
 
     fn evaluate_statement(&mut self, statement: &Statement) -> Result<StatementRecord, CrawlError> {
         match statement {
-            Statement::ClearFact(fact) => todo!(),
-            Statement::ClearPersistentFact(fact) => todo!(),
+            Statement::ClearFact(fact) => self.evaluate_clear_fact(fact.clone()),
+            Statement::ClearPersistentFact(fact) => {
+                self.evaluate_clear_persistent_fact(fact.clone())
+            }
             Statement::IfThen {
                 antecedent,
                 consequent,
@@ -87,16 +91,16 @@ impl<'a> Interpreter<'a> {
                 arms,
             } => self.evaluate_matching_roll(roll_specifier, arms),
             Statement::Procedure { declaration, body } => {
-                // TODO: How to avoid the vec copy?
+                // How to avoid the vec copy?
                 self.evaluate_procedure_definition(declaration, body.to_vec())
             }
             Statement::ProcedureCall(procedure_name) => {
                 self.evaluate_procedure_call(procedure_name)
             }
-            Statement::Reminder(reminder) => self.evaluate_reminder(reminder),
-            // Can you {operation}_fact as a top-level statement? What would that mean/do? How to detect?
-            Statement::SetFact(fact) => todo!(),
-            Statement::SetPersistentFact(fact) => todo!(),
+            Statement::Reminder(reminder) => self.evaluate_reminder(reminder.clone()),
+            // Can you {operation}_fact as a top-level statement? What would that mean/do?
+            Statement::SetFact(fact) => self.evaluate_set_fact(fact.clone()),
+            Statement::SetPersistentFact(fact) => self.evaluate_set_persistent_fact(fact.clone()),
             Statement::SwapFact(fact) => todo!(),
             Statement::SwapPersistentFact(fact) => todo!(),
             Statement::TableRoll(table_name) => todo!(),
@@ -105,8 +109,10 @@ impl<'a> Interpreter<'a> {
 
     fn evaluate_antecedent(&mut self, antecedent: &Antecedent) -> Result<bool, CrawlError> {
         match antecedent {
-            Antecedent::CheckFact(fact) => todo!(),
-            Antecedent::CheckPersistentFact(fact) => todo!(),
+            Antecedent::CheckFact(fact) => self.evaluate_check_fact(fact.clone()),
+            Antecedent::CheckPersistentFact(fact) => {
+                self.evaluate_check_persistent_fact(fact.clone())
+            }
             Antecedent::DiceRoll {
                 target,
                 roll_specifier,
@@ -119,11 +125,13 @@ impl<'a> Interpreter<'a> {
         consequent: &Statement,
     ) -> Result<StatementRecord, CrawlError> {
         match consequent {
-            Statement::ClearFact(fact) => todo!(),
-            Statement::ClearPersistentFact(fact) => todo!(),
-            Statement::SetFact(fact) => todo!(),
-            Statement::SetPersistentFact(fact) => todo!(),
-            Statement::Reminder(reminder) => self.evaluate_reminder(reminder),
+            Statement::ClearFact(fact) => self.evaluate_clear_fact(fact.clone()),
+            Statement::ClearPersistentFact(fact) => {
+                self.evaluate_clear_persistent_fact(fact.clone())
+            }
+            Statement::SetFact(fact) => self.evaluate_set_fact(fact.clone()),
+            Statement::SetPersistentFact(fact) => self.evaluate_set_persistent_fact(fact.clone()),
+            Statement::Reminder(reminder) => self.evaluate_reminder(reminder.clone()),
             Statement::SwapFact(fact) => todo!(),
             Statement::SwapPersistentFact(fact) => todo!(),
             Statement::TableRoll(table_name) => todo!(),
@@ -152,8 +160,8 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn evaluate_reminder(&mut self, reminder: &str) -> Result<StatementRecord, CrawlError> {
-        Ok(StatementRecord::Reminder(reminder.to_string()))
+    fn evaluate_reminder(&mut self, reminder: String) -> Result<StatementRecord, CrawlError> {
+        Ok(StatementRecord::Reminder(reminder))
     }
 
     fn evaluate_matching_roll(
@@ -182,11 +190,7 @@ impl<'a> Interpreter<'a> {
         body: Vec<Box<Statement>>,
     ) -> Result<StatementRecord, CrawlError> {
         let ident = declaration.0.clone();
-        let def = CrawlProcedure::new(
-            ident.clone(),
-            body.into_iter().map(|s| *s).collect(),
-            FactDatabase::new(),
-        );
+        let def = CrawlProcedure::new(ident.clone(), body.into_iter().map(|s| *s).collect());
         self.procedures.insert(ident.clone(), def);
         Ok(StatementRecord::ProcedureDefinition(ident.clone()))
     }
@@ -195,8 +199,53 @@ impl<'a> Interpreter<'a> {
         &mut self,
         procedure_identifier: &str,
     ) -> Result<StatementRecord, CrawlError> {
-        let proc = self.procedures.get(procedure_identifier);
-        todo!()
+        let outer_facts = self.local_facts.clone();
+
+        let proc = self.procedures.get(procedure_identifier).unwrap();
+
+        let mut records = Vec::new();
+        // How to avoid this clone?
+        for statement in proc.body.clone() {
+            records.push(Box::new(self.evaluate_statement(&statement)?));
+        }
+
+        self.local_facts = outer_facts;
+        Ok(StatementRecord::ProcedureCall { records })
+    }
+
+    fn evaluate_check_persistent_fact(&mut self, fact: String) -> Result<bool, CrawlError> {
+        Ok(self.persistent_facts.check(&fact.try_into().unwrap()))
+    }
+
+    fn evaluate_set_persistent_fact(
+        &mut self,
+        fact: String,
+    ) -> Result<StatementRecord, CrawlError> {
+        self.persistent_facts.set(fact.clone().try_into().unwrap());
+        Ok(StatementRecord::SetPersistentFact(fact))
+    }
+
+    fn evaluate_clear_persistent_fact(
+        &mut self,
+        fact: String,
+    ) -> Result<StatementRecord, CrawlError> {
+        self.persistent_facts
+            .clear(&fact.clone().try_into().unwrap());
+        Ok(StatementRecord::ClearPersistentFact(fact))
+    }
+
+    fn evaluate_check_fact(&mut self, fact: String) -> Result<bool, CrawlError> {
+        Ok(self.local_facts.check(&fact.try_into().unwrap()))
+    }
+
+    fn evaluate_set_fact(&mut self, fact: String) -> Result<StatementRecord, CrawlError> {
+        self.local_facts.set(fact.clone().try_into().unwrap());
+        Ok(StatementRecord::SetFact(fact))
+    }
+
+    fn evaluate_clear_fact(&mut self, fact: String) -> Result<StatementRecord, CrawlError> {
+        self.local_facts.clear(&fact.clone().try_into().unwrap());
+        Ok(StatementRecord::ClearFact(fact))
     }
 
     fn evaluate_dice_roll(
@@ -218,16 +267,38 @@ impl<'a> Interpreter<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::facts::Fact;
+
     use super::*;
+
+    fn interp_to_values(statements: Vec<Statement>) -> Vec<StatementRecord> {
+        Interpreter::new()
+            .interpret(statements)
+            .into_iter()
+            .map(|v| v.unwrap())
+            .collect()
+    }
+
+    fn make_proc_body() -> Vec<Box<Statement>> {
+        vec![
+            Box::new(Statement::IfThen {
+                antecedent: Antecedent::DiceRoll {
+                    target: Token::Num(1),
+                    roll_specifier: ModifiedRollSpecifier {
+                        base_roll_specifier: Token::RollSpecifier("1d1".into()),
+                        modifier: 0,
+                    },
+                },
+                consequent: Box::new(Statement::Reminder("you passed the check".into())),
+            }),
+            Box::new(Statement::Reminder("cool procedure".into())),
+        ]
+    }
 
     #[test]
     fn interpret_reminder() {
         let ast = Statement::Reminder("players must eat rations daily".into());
-        let value: Vec<StatementRecord> = Interpreter::new()
-            .interpret(vec![ast])
-            .into_iter()
-            .map(|v| v.unwrap())
-            .collect();
+        let value = interp_to_values(vec![ast]);
         assert_eq!(
             value,
             vec![StatementRecord::Reminder(
@@ -248,11 +319,7 @@ mod tests {
             },
             consequent: Box::new(Statement::Reminder("you passed the check".into())),
         };
-        let value: Vec<StatementRecord> = Interpreter::new()
-            .interpret(vec![ast])
-            .into_iter()
-            .map(|v| v.unwrap())
-            .collect();
+        let value = interp_to_values(vec![ast]);
         assert_eq!(
             value,
             vec![StatementRecord::IfThen {
@@ -276,11 +343,7 @@ mod tests {
             },
             consequent: Box::new(Statement::Reminder("you passed the check".into())),
         };
-        let value: Vec<StatementRecord> = Interpreter::new()
-            .interpret(vec![ast])
-            .into_iter()
-            .map(|v| v.unwrap())
-            .collect();
+        let value = interp_to_values(vec![ast]);
         assert_eq!(
             value,
             vec![StatementRecord::IfThen {
@@ -292,19 +355,7 @@ mod tests {
 
     #[test]
     fn interpret_proc_def() {
-        let body = vec![
-            Box::new(Statement::IfThen {
-                antecedent: Antecedent::DiceRoll {
-                    target: Token::Num(1),
-                    roll_specifier: ModifiedRollSpecifier {
-                        base_roll_specifier: Token::RollSpecifier("1d1".into()),
-                        modifier: 0,
-                    },
-                },
-                consequent: Box::new(Statement::Reminder("you passed the check".into())),
-            }),
-            Box::new(Statement::Reminder("cool procedure".into())),
-        ];
+        let body = make_proc_body();
         let ast = Statement::Procedure {
             declaration: ProcedureDeclaration("proc-name".into()),
             body: body.clone(),
@@ -320,11 +371,39 @@ mod tests {
             vec![StatementRecord::ProcedureDefinition("proc-name".into())]
         );
         assert!(interp.procedures.contains_key("proc-name"));
-        let deref_body: Vec<Statement> = body.into_iter().map(|s| *s).collect();
         assert_eq!(
             *interp.procedures.get("proc-name").unwrap().body,
-            dbg!(deref_body),
+            body.into_iter().map(|s| *s).collect::<Vec<Statement>>()
         );
+    }
+
+    #[test]
+    fn interpret_proc_call() {
+        let body = make_proc_body();
+        let proc = Statement::Procedure {
+            declaration: ProcedureDeclaration("proc-name".into()),
+            body: body.clone(),
+        };
+        let call = Statement::ProcedureCall("proc-name".into());
+        let ast = vec![proc, call];
+        let values = interp_to_values(ast);
+        assert_eq!(
+            values,
+            vec![
+                StatementRecord::ProcedureDefinition("proc-name".into()),
+                StatementRecord::ProcedureCall {
+                    records: vec![
+                        Box::new(StatementRecord::IfThen {
+                            antecedent: true,
+                            consequent: Some(Box::new(StatementRecord::Reminder(
+                                "you passed the check".into()
+                            ))),
+                        }),
+                        Box::new(StatementRecord::Reminder("cool procedure".into())),
+                    ],
+                },
+            ],
+        )
     }
 
     #[test]
@@ -339,11 +418,7 @@ mod tests {
                 consequent: Statement::Reminder("matched 1".into()),
             }],
         };
-        let value: Vec<StatementRecord> = Interpreter::new()
-            .interpret(vec![ast])
-            .into_iter()
-            .map(|v| v.unwrap())
-            .collect();
+        let value = interp_to_values(vec![ast]);
         assert_eq!(
             value,
             vec![StatementRecord::MatchingRoll {
@@ -351,6 +426,24 @@ mod tests {
                 consequent: Some(Box::new(StatementRecord::Reminder("matched 1".into()))),
             }]
         )
+    }
+
+    #[test]
+    fn interpret_set_persistent_fact() {
+        let ast = Statement::SetPersistentFact("weather is nice".into());
+        let mut interp = Interpreter::new();
+        let values: Vec<StatementRecord> = interp
+            .interpret(vec![ast])
+            .into_iter()
+            .map(|v| v.unwrap())
+            .collect();
+        assert_eq!(
+            values,
+            vec![StatementRecord::SetPersistentFact("weather is nice".into())]
+        );
+        assert!(interp
+            .persistent_facts
+            .check(&Fact::try_from(String::from("weather is nice")).unwrap()));
     }
 
     #[test]
