@@ -1,4 +1,4 @@
-use crate::interpreter::{self, Interpreter, StatementRecord};
+use crate::interpreter::{Interpreter, StatementRecord};
 use crate::parser::Parser;
 use crate::scanner::Scanner;
 

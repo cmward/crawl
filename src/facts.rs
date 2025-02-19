@@ -2,6 +2,11 @@ use std::collections::HashSet;
 
 use crate::error::CrawlError;
 
+// TODO: I would like this all to be more useful.
+// Right now a FactDatabase stores triples in a set.
+// Might as well just store the strings.
+// Would be cool to be able to make datalog-like queries.
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Fact {
     entity: String,

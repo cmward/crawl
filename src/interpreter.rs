@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use crate::dice::DiceRoll;
 use crate::error::CrawlError;
 use crate::facts::FactDatabase;
-use crate::lang::Crawl;
 use crate::parser::{
     Antecedent, MatchingRollArm, ModifiedRollSpecifier, ProcedureDeclaration, Statement,
 };
@@ -92,7 +91,7 @@ impl Interpreter {
             } => self.evaluate_matching_roll(roll_specifier, arms),
             Statement::Procedure { declaration, body } => {
                 // How to avoid the vec copy?
-                self.evaluate_procedure_definition(declaration, body.to_vec())
+                self.evaluate_procedure_definition(declaration, body.clone())
             }
             Statement::ProcedureCall(procedure_name) => {
                 self.evaluate_procedure_call(procedure_name)
@@ -101,8 +100,6 @@ impl Interpreter {
             // Can you {operation}_fact as a top-level statement? What would that mean/do?
             Statement::SetFact(fact) => self.evaluate_set_fact(fact.clone()),
             Statement::SetPersistentFact(fact) => self.evaluate_set_persistent_fact(fact.clone()),
-            Statement::SwapFact(fact) => todo!(),
-            Statement::SwapPersistentFact(fact) => todo!(),
             Statement::TableRoll(table_name) => todo!(),
         }
     }
@@ -132,8 +129,6 @@ impl Interpreter {
             Statement::SetFact(fact) => self.evaluate_set_fact(fact.clone()),
             Statement::SetPersistentFact(fact) => self.evaluate_set_persistent_fact(fact.clone()),
             Statement::Reminder(reminder) => self.evaluate_reminder(reminder.clone()),
-            Statement::SwapFact(fact) => todo!(),
-            Statement::SwapPersistentFact(fact) => todo!(),
             Statement::TableRoll(table_name) => todo!(),
             _ => Err(CrawlError::InterpreterError {
                 reason: "Invalid statement as consequent".into(),

@@ -32,8 +32,6 @@ pub enum Token {
     SetFact,
     SetPersistentFact,
     Str(String),
-    SwapFact,
-    SwapPersistentFact,
     Table,
 }
 
@@ -231,8 +229,6 @@ impl Scanner {
             "roll" => Some(Token::Roll),
             "set-fact" => Some(Token::SetFact),
             "set-persistent-fact" => Some(Token::SetPersistentFact),
-            "swap-fact" => Some(Token::SwapFact),
-            "swap-persistent-fact" => Some(Token::SwapPersistentFact),
             "table" => Some(Token::Table),
             _ => None,
         }

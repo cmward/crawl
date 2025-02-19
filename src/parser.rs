@@ -24,8 +24,6 @@ pub enum Statement {
     Reminder(String),
     SetFact(String),
     SetPersistentFact(String),
-    SwapFact(String),
-    SwapPersistentFact(String),
     TableRoll(String),
 }
 
@@ -100,8 +98,6 @@ impl Parser {
             },
             Token::SetFact => self.set_fact(),
             Token::SetPersistentFact => self.set_persistent_fact(),
-            Token::SwapFact => self.swap_fact(),
-            Token::SwapPersistentFact => self.swap_persistent_fact(),
             _ => Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
             }),
@@ -268,8 +264,6 @@ impl Parser {
             Token::SetPersistentFact => self.set_persistent_fact(),
             Token::ClearFact => self.clear_fact(),
             Token::ClearPersistentFact => self.clear_persistent_fact(),
-            Token::SwapFact => self.swap_fact(),
-            Token::SwapPersistentFact => self.swap_persistent_fact(),
             Token::Reminder => self.reminder(),
             Token::Roll => self.table_roll(),
             _ => Err(CrawlError::ParserError {
@@ -391,37 +385,6 @@ impl Parser {
         self.advance();
 
         Ok(Statement::ClearPersistentFact(fact))
-    }
-
-    fn swap_fact(&mut self) -> Result<Statement, CrawlError> {
-        self.consume(Token::SwapFact).expect("expected swap-fact");
-        let fact = if let Token::Str(fact) = self.peek() {
-            Ok(fact.clone())
-        } else {
-            Err(CrawlError::ParserError {
-                token: format!("{:?}", self.peek()),
-            })
-        }?;
-
-        self.advance();
-
-        Ok(Statement::SwapFact(fact))
-    }
-
-    fn swap_persistent_fact(&mut self) -> Result<Statement, CrawlError> {
-        self.consume(Token::SwapPersistentFact)
-            .expect("expected swap-persistent-fact");
-        let fact = if let Token::Str(fact) = self.peek() {
-            Ok(fact.clone())
-        } else {
-            Err(CrawlError::ParserError {
-                token: format!("{:?}", self.peek()),
-            })
-        }?;
-
-        self.advance();
-
-        Ok(Statement::SwapPersistentFact(fact))
     }
 
     fn table_roll(&mut self) -> Result<Statement, CrawlError> {
@@ -668,29 +631,6 @@ mod tests {
         assert_eq!(
             parsed.unwrap(),
             Statement::ClearPersistentFact("weather is nice".into())
-        )
-    }
-
-    #[test]
-    fn swap_fact() {
-        let toks = vec![Token::SwapFact, Token::Str("weather is nice".into())];
-        let parsed = Parser::new(toks).swap_fact();
-        assert_eq!(
-            parsed.unwrap(),
-            Statement::SwapFact("weather is nice".into())
-        )
-    }
-
-    #[test]
-    fn swap_persistent_fact() {
-        let toks = vec![
-            Token::SwapPersistentFact,
-            Token::Str("weather is nice".into()),
-        ];
-        let parsed = Parser::new(toks).swap_persistent_fact();
-        assert_eq!(
-            parsed.unwrap(),
-            Statement::SwapPersistentFact("weather is nice".into())
         )
     }
 
