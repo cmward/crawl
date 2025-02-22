@@ -37,7 +37,7 @@ impl Table {
         }
     }
 
-    pub fn roll(&self, dice: DiceRoll) -> Result<TableRollResult, CrawlError> {
+    pub fn roll(&self, dice: &DiceRoll) -> Result<TableRollResult, CrawlError> {
         let roll_result = dice.roll();
         if let Some(entry_idx) = self.roll_targets.get(&roll_result.total) {
             Ok(TableRollResult::new(self.entries.get(*entry_idx).unwrap()))
@@ -53,7 +53,7 @@ impl Table {
         let dice = vec![Die(max_value)];
         let dice_pool = DicePool::new(dice);
         let roll = DiceRoll::new(dice_pool, 0);
-        self.roll(roll)
+        self.roll(&roll)
     }
 
     // TODO: load from table paths + without extension
@@ -121,11 +121,11 @@ mod tests {
         let table = Table::from(vec![low_entry.clone(), high_entry.clone()]);
 
         let dice = DiceRoll::new(DicePool::new(vec![Die(1)]), 0);
-        let result = table.roll(dice).unwrap();
+        let result = table.roll(&dice).unwrap();
         assert_eq!(result, TableRollResult { entry: &low_entry });
 
         let dice = DiceRoll::new(DicePool::new(vec![Die(1)]), 11);
-        let result = table.roll(dice).unwrap();
+        let result = table.roll(&dice).unwrap();
         assert_eq!(result, TableRollResult { entry: &high_entry });
     }
 
@@ -143,7 +143,7 @@ mod tests {
         let table = Table::from(vec![zero_entry.clone(), one_entry.clone()]);
 
         let dice = DiceRoll::new(DicePool::new(vec![Die(1)]), 0);
-        let result = table.roll(dice).unwrap();
+        let result = table.roll(&dice).unwrap();
 
         assert_eq!(result, TableRollResult { entry: &one_entry });
     }
@@ -154,7 +154,7 @@ mod tests {
         let table = Table::load("table.csv").unwrap();
 
         let dice = DiceRoll::new(DicePool::new(vec![Die(1)]), 11);
-        let result = table.roll(dice).unwrap();
+        let result = table.roll(&dice).unwrap();
 
         let entry = TableEntry {
             roll_target: RollTarget::NumRange(7, 12),

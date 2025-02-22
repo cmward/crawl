@@ -25,6 +25,7 @@ pub enum StatementRecord {
         consequent: Option<Box<StatementRecord>>,
     },
     ProcedureCall {
+        identifier: String,
         records: Vec<Box<StatementRecord>>,
     },
     ProcedureDefinition(String),
@@ -102,14 +103,12 @@ impl Interpreter {
                     body.iter().cloned().map(|s| *s).collect(),
                 )
             }
-            Statement::ProcedureCall(procedure_name) => {
-                self.evaluate_procedure_call(procedure_name)
-            }
+            Statement::ProcedureCall(identifier) => self.evaluate_procedure_call(identifier),
             Statement::Reminder(reminder) => self.evaluate_reminder(reminder.clone()),
             // Can you {operation}_fact as a top-level statement? What would that mean/do?
             Statement::SetFact(fact) => self.evaluate_set_fact(fact.clone()),
             Statement::SetPersistentFact(fact) => self.evaluate_set_persistent_fact(fact.clone()),
-            Statement::TableRoll(table_name) => self.evaluate_table_roll(table_name.clone()),
+            Statement::TableRoll(table_name) => self.evaluate_table_roll(table_name),
         }
     }
 
@@ -141,7 +140,7 @@ impl Interpreter {
             Statement::SetFact(fact) => self.evaluate_set_fact(fact.clone()),
             Statement::SetPersistentFact(fact) => self.evaluate_set_persistent_fact(fact.clone()),
             Statement::Reminder(reminder) => self.evaluate_reminder(reminder.clone()),
-            Statement::TableRoll(table_name) => self.evaluate_table_roll(table_name.clone()),
+            Statement::TableRoll(table_name) => self.evaluate_table_roll(table_name),
             _ => Err(CrawlError::InterpreterError {
                 reason: "Invalid statement as consequent".into(),
             }),
@@ -167,7 +166,7 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_reminder(&mut self, reminder: String) -> Result<StatementRecord, CrawlError> {
+    fn evaluate_reminder(&self, reminder: String) -> Result<StatementRecord, CrawlError> {
         Ok(StatementRecord::Reminder(reminder))
     }
 
@@ -184,8 +183,8 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_table_roll(&mut self, table_name: String) -> Result<StatementRecord, CrawlError> {
-        let table = self.tables.get(&table_name).unwrap();
+    fn evaluate_table_roll(&mut self, table_name: &str) -> Result<StatementRecord, CrawlError> {
+        let table = self.tables.get(table_name).unwrap();
         // TODO: support `roll 1d6 + 3 on table "crits"`
         let table_roll_result = table.auto_roll()?;
         Ok(StatementRecord::TableRoll(
@@ -241,7 +240,10 @@ impl Interpreter {
         }
 
         self.local_facts = outer_facts;
-        Ok(StatementRecord::ProcedureCall { records })
+        Ok(StatementRecord::ProcedureCall {
+            identifier: procedure_identifier.into(),
+            records,
+        })
     }
 
     fn evaluate_check_persistent_fact(&mut self, fact: String) -> Result<bool, CrawlError> {
@@ -431,6 +433,7 @@ mod tests {
             vec![
                 StatementRecord::ProcedureDefinition("proc-name".into()),
                 StatementRecord::ProcedureCall {
+                    identifier: "proc-name".into(),
                     records: vec![
                         Box::new(StatementRecord::IfThen {
                             antecedent: true,
