@@ -9,12 +9,12 @@ pub struct TableEntry {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct TableRollResult {
-    entry: TableEntry, // should be a reference?
+pub struct TableRollResult<'a> {
+    entry: &'a TableEntry,
 }
 
-impl TableRollResult {
-    pub fn new(entry: TableEntry) -> Self {
+impl<'a> TableRollResult<'a> {
+    pub fn new(entry: &'a TableEntry) -> Self {
         Self { entry }
     }
 }
@@ -36,9 +36,7 @@ impl Table {
     pub fn roll(&self, dice: DiceRoll) -> Result<TableRollResult, CrawlError> {
         let roll_result = dice.roll();
         if let Some(entry_idx) = self.roll_targets.get(&roll_result.total) {
-            Ok(TableRollResult::new(
-                self.entries.get(*entry_idx).unwrap().clone(), // TODO: reference
-            ))
+            Ok(TableRollResult::new(self.entries.get(*entry_idx).unwrap()))
         } else {
             Err(CrawlError::InterpreterError {
                 reason: format!("roll {roll_result:?} not a valid index for table"),
@@ -111,11 +109,11 @@ mod tests {
 
         let dice = DiceRoll::new(DicePool::new(vec![Die(1)]), 0);
         let result = table.roll(dice).unwrap();
-        assert_eq!(result, TableRollResult { entry: low_entry });
+        assert_eq!(result, TableRollResult { entry: &low_entry });
 
         let dice = DiceRoll::new(DicePool::new(vec![Die(1)]), 11);
         let result = table.roll(dice).unwrap();
-        assert_eq!(result, TableRollResult { entry: high_entry });
+        assert_eq!(result, TableRollResult { entry: &high_entry });
     }
 
     #[test]
@@ -134,7 +132,7 @@ mod tests {
         let dice = DiceRoll::new(DicePool::new(vec![Die(1)]), 0);
         let result = table.roll(dice).unwrap();
 
-        assert_eq!(result, TableRollResult { entry: one_entry });
+        assert_eq!(result, TableRollResult { entry: &one_entry });
     }
 
     #[test]
@@ -148,6 +146,6 @@ mod tests {
             roll_target: RollTarget::NumRange(7, 12),
             value: "total darkness and dread".into(),
         };
-        assert_eq!(result, TableRollResult { entry })
+        assert_eq!(result, TableRollResult { entry: &entry })
     }
 }
