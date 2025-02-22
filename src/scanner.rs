@@ -3,6 +3,7 @@
 */
 
 use crate::error::CrawlError;
+use crate::rolls::RollTarget;
 
 const EOF_CHAR: char = '\0';
 
@@ -152,19 +153,17 @@ impl Scanner {
         match (is_dice_roll, is_roll_range) {
             (true, false) => Ok(Token::RollSpecifier(lexeme)),
             (false, true) => {
-                let range_nums = lexeme.split('-').collect::<Vec<&str>>();
-                // TODO: produce ScannerErrors here
-                let range_min = range_nums
-                    .first()
-                    .expect("range min should be a value")
-                    .parse::<i32>()
-                    .expect("range min should be a number");
-                let range_max = range_nums
-                    .last()
-                    .expect("range max should be a value")
-                    .parse::<i32>()
-                    .expect("range max should be a number");
-                Ok(Token::NumRange(range_min, range_max))
+                if let Ok(RollTarget::NumRange(range_min, range_max)) = RollTarget::try_from(lexeme.clone())
+                {
+                    return Ok(Token::NumRange(range_min, range_max));
+                } else {
+                    return Err(CrawlError::ScannerError {
+                        position: self.position,
+                        line: self.line,
+                        lexeme,
+                        reason: format!("invalid roll target"),
+                    });
+                }
             }
             (false, false) => Ok(Token::Num(
                 lexeme.parse::<i32>().expect("should be a number"),

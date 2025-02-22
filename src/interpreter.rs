@@ -100,7 +100,7 @@ impl Interpreter {
             // Can you {operation}_fact as a top-level statement? What would that mean/do?
             Statement::SetFact(fact) => self.evaluate_set_fact(fact.clone()),
             Statement::SetPersistentFact(fact) => self.evaluate_set_persistent_fact(fact.clone()),
-            Statement::TableRoll(table_name) => todo!(),
+            Statement::TableRoll(table_name) => todo!(),  // syntactic sugar for matching roll?
         }
     }
 

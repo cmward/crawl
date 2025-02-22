@@ -35,6 +35,10 @@ pub struct DicePool {
 }
 
 impl DicePool {
+    pub fn new(dice: Vec<Die>) -> Self {
+        DicePool { dice }
+    }
+
     fn roll(&self) -> DicePoolRollResult {
         DicePoolRollResult {
             results: self.dice.iter().map(Die::roll).collect(),
@@ -69,6 +73,16 @@ impl fmt::Display for DiceRollResult {
     }
 }
 
+impl DiceRollResult {
+    fn new(pool_result: DicePoolRollResult, modifier: i32, total: i32) -> Self {
+        DiceRollResult {
+            pool_result,
+            modifier,
+            total,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct DiceRoll {
     pub dice_pool: DicePool,
@@ -76,14 +90,17 @@ pub struct DiceRoll {
 }
 
 impl DiceRoll {
+    pub fn new(dice_pool: DicePool, modifier: i32) -> Self {
+        DiceRoll {
+            dice_pool,
+            modifier,
+        }
+    }
+
     pub fn roll(&self) -> DiceRollResult {
         let pool_result = self.dice_pool.roll();
         let unmodified_total = pool_result.results.iter().fold(0, |acc, e| acc + e.0);
-        DiceRollResult {
-            pool_result,
-            modifier: self.modifier,
-            total: unmodified_total + self.modifier,
-        }
+        DiceRollResult::new(pool_result, self.modifier, unmodified_total + self.modifier)
     }
 }
 
@@ -110,10 +127,7 @@ impl TryFrom<&ModifiedRollSpecifier> for DiceRoll {
                 dice.push(Die(n_sides));
             }
 
-            Ok(DiceRoll {
-                dice_pool: DicePool { dice },
-                modifier: value.modifier,
-            })
+            Ok(DiceRoll::new(DicePool { dice }, value.modifier))
         } else {
             Err(CrawlError::ParserError {
                 token: format!("{:?}", value),
