@@ -113,7 +113,7 @@ impl TryFrom<&ModifiedRollSpecifier> for DiceRoll {
             let captures = re
                 .captures(spec)
                 .ok_or(CrawlError::ParserError {
-                    token: format!("{:?}", value),
+                    token: format!("{value:?}"),
                 })
                 .expect("failed to parse roll specifier");
 
@@ -130,7 +130,7 @@ impl TryFrom<&ModifiedRollSpecifier> for DiceRoll {
             Ok(DiceRoll::new(DicePool { dice }, value.modifier))
         } else {
             Err(CrawlError::ParserError {
-                token: format!("{:?}", value),
+                token: format!("{value:?}"),
             })
         }
     }

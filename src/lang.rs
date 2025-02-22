@@ -4,6 +4,12 @@ use crate::scanner::Scanner;
 
 pub struct Crawl;
 
+impl Default for Crawl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Crawl {
     pub fn new() -> Self {
         Crawl

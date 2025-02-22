@@ -17,8 +17,8 @@ impl TryFrom<String> for Fact {
     type Error = CrawlError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        if let Some((entity, tail)) = value.split_once(" ") {
-            if let Some((attribute, val)) = tail.split_once(" ") {
+        if let Some((entity, tail)) = value.split_once(' ') {
+            if let Some((attribute, val)) = tail.split_once(' ') {
                 Ok(Fact {
                     entity: entity.into(),
                     attribute: attribute.into(),

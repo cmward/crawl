@@ -87,10 +87,11 @@ impl Scanner {
                 // This is the only reason this needs to be wrapped in a loop
                 ' ' => {
                     let token = self.scan_whitespace();
-                    if let Some(t) = token {
-                        return Ok(t);
-                    } else {
-                        self.start = self.position;
+                    match token {
+                        Some(t) => return Ok(t),
+                        None => {
+                            self.start = self.position;
+                        }
                     }
                 }
 

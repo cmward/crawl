@@ -186,8 +186,7 @@ impl Parser {
             }
 
             let target = match self.peek() {
-                Token::NumRange(_, _) => Ok(self.peek().clone()),
-                Token::Num(_) => Ok(self.peek().clone()),
+                Token::Num(_) | Token::NumRange(_, _) => Ok(self.peek().clone()),
                 _ => Err(CrawlError::ParserError {
                     token: format!("{:?}", self.peek()),
                 }),
@@ -307,8 +306,7 @@ impl Parser {
     fn dice_roll(&mut self) -> Result<Antecedent, CrawlError> {
         self.consume(Token::Roll).expect("expected roll");
         let target = match self.peek() {
-            Token::NumRange(_, _) => Ok(self.peek().clone()),
-            Token::Num(_) => Ok(self.peek().clone()),
+            Token::Num(_) | Token::NumRange(_, _) => Ok(self.peek().clone()),
             _ => Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
             }),
