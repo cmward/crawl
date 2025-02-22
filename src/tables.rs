@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{dice::DiceRoll, error::CrawlError, rolls::RollTarget};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct TableEntry {
     roll_target: RollTarget,
     value: String,
@@ -41,11 +41,50 @@ impl<'a> Table<'a> {
     }
 }
 
+impl<'a> From<Vec<&'a TableEntry>> for Table<'a> {
+    fn from(value: Vec<&'a TableEntry>) -> Self {
+        let mut entries = HashMap::<i32, &'a TableEntry>::new();
+        for entry in value {
+            let idxs = match entry.roll_target {
+                RollTarget::Num(n) => vec![n],
+                RollTarget::NumRange(n, m) => (n..=m).collect(),
+            };
+
+            for idx in idxs {
+                entries.insert(idx, entry);
+            }
+        }
+
+        Table { entries }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::dice::{DicePool, Die};
 
     use super::*;
+
+    #[test]
+    fn range_target_table_from_vec() {
+        let low_entry = TableEntry {
+            roll_target: RollTarget::NumRange(1, 6),
+            value: "1-6".into(),
+        };
+        let high_entry = TableEntry {
+            roll_target: RollTarget::NumRange(7, 12),
+            value: "7-12".into(),
+        };
+        let table = dbg!(Table::from(vec![&low_entry, &high_entry]));
+
+        let dice = dbg!(DiceRoll::new(DicePool::new(vec![Die(1)]), 0));
+        let result = dbg!(table.roll(dice).unwrap());
+        assert_eq!(result, TableRollResult { entry: &low_entry });
+
+        let dice = DiceRoll::new(DicePool::new(vec![Die(1)]), 11);
+        let result = table.roll(dice).unwrap();
+        assert_eq!(result, TableRollResult { entry: &high_entry });
+    }
 
     #[test]
     fn roll_num_target() {
@@ -64,39 +103,5 @@ mod tests {
         let result = table.roll(dice).unwrap();
 
         assert_eq!(result, TableRollResult { entry: &one_entry });
-    }
-
-    #[test]
-    fn roll_range_target() {
-        let low_entry = TableEntry {
-            roll_target: RollTarget::Num(0),
-            value: "1-6".into(),
-        };
-        let high_entry = TableEntry {
-            roll_target: RollTarget::Num(1),
-            value: "7-12".into(),
-        };
-        let table = Table::new(HashMap::from([
-            (1, &low_entry),
-            (2, &low_entry),
-            (3, &low_entry),
-            (4, &low_entry),
-            (5, &low_entry),
-            (6, &low_entry),
-            (7, &high_entry),
-            (8, &high_entry),
-            (9, &high_entry),
-            (10, &high_entry),
-            (11, &high_entry),
-            (12, &high_entry),
-        ]));
-
-        let dice = DiceRoll::new(DicePool::new(vec![Die(1)]), 0);
-        let result = table.roll(dice).unwrap();
-        assert_eq!(result, TableRollResult { entry: &low_entry });
-
-        let dice = DiceRoll::new(DicePool::new(vec![Die(1)]), 11);
-        let result = table.roll(dice).unwrap();
-        assert_eq!(result, TableRollResult { entry: &high_entry });
     }
 }

@@ -93,7 +93,7 @@ impl Interpreter {
                 // How to avoid the vec copy?
                 self.evaluate_procedure_definition(
                     declaration,
-                    body.clone().into_iter().map(|s| *s).collect(),
+                    body.iter().cloned().map(|s| *s).collect(),
                 )
             }
             Statement::ProcedureCall(procedure_name) => {

@@ -2,7 +2,7 @@ use crate::error::CrawlError;
 use crate::scanner::Token;
 
 // TODO: replace expects with automatically filled out expected tokens in consume
-// TODO: lots of cloning
+// TODO: lots of cloning - Rc?
 // TODO: crazy error handling
 
 #[derive(Clone, Debug, PartialEq)]
