@@ -50,7 +50,7 @@ impl Scanner {
         Scanner {
             source,
             position: 0,
-            line: 0,
+            line: 1,
             start: 0,
         }
     }
@@ -81,11 +81,18 @@ impl Scanner {
                 // Quoted text - Str
                 '"' => return self.scan_str(),
 
-                // Text - keywords
+                // Text - keywords and identifiers
                 c if c.is_alphabetic() => return self.scan_symbol(),
 
                 // This is the only reason this needs to be wrapped in a loop
-                ' ' => self.start = self.position,
+                ' ' => {
+                    let token = self.scan_whitespace();
+                    if let Some(t) = token {
+                        return Ok(t);
+                    } else {
+                        self.start = self.position;
+                    }
+                }
 
                 '\t' => return Ok(Token::Indent),
 
@@ -179,6 +186,21 @@ impl Scanner {
         }
     }
 
+    fn scan_whitespace(&mut self) -> Option<Token> {
+        // Potentially easier to do an initial pass on source text converting all sequences of 4
+        // spaces into explicit tab characters.
+        let mut n_spaces = 1;
+        while self.peek() == ' ' {
+            n_spaces += 1;
+            self.advance();
+            if n_spaces == 4 {
+                return Some(Token::Indent);
+            }
+        }
+
+        None
+    }
+
     fn scan_str(&mut self) -> Result<Token, CrawlError> {
         while self.peek() != '"' && !self.is_at_end() {
             self.advance();
@@ -205,8 +227,7 @@ impl Scanner {
 
     fn scan_symbol(&mut self) -> Result<Token, CrawlError> {
         let mut next_ch = self.curr_char();
-        // function names can have hyphens in them
-        while !self.is_at_end() && (next_ch.is_alphabetic() || next_ch == '-') {
+        while !self.is_at_end() && (next_ch.is_alphabetic() || next_ch == '-' || next_ch == '?') {
             self.advance();
             next_ch = self.curr_char();
         }
@@ -392,10 +413,7 @@ mod tests {
 
     #[test]
     fn scan_matching_roll() {
-        let source = "roll 2d6
-            \t2-4 => set-fact \"encounter is hostile\"
-            \t5-8 => set-fact \"encounter is neutral\"
-            end"
+        let source = "roll 2d6\n\t2-4 => set-fact \"encounter is hostile\"\n\t5-8 => set-fact \"encounter is neutral\"\nend"
         .chars()
         .collect();
         let mut scanner = Scanner::new(source);

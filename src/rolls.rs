@@ -1,5 +1,7 @@
 use crate::error::CrawlError;
 
+// TODO: confusing to have rolls.rs and dice.rs
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum RollTarget {
     Num(i32),

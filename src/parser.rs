@@ -90,10 +90,7 @@ impl Parser {
             Token::Procedure => self.procedure(),
             Token::Reminder => self.reminder(),
             Token::Roll => match self.peek_next() {
-                Token::Num(_) | Token::NumRange(_, _) => Err(CrawlError::ParserError {
-                    token: format!("{:?}", self.peek()),
-                }),
-                Token::On => return self.table_roll(),
+                Token::On => self.table_roll(),
                 Token::RollSpecifier(_) => self.matching_roll(),
                 _ => Err(CrawlError::ParserError {
                     token: format!("{:?}", self.peek()),
@@ -115,22 +112,26 @@ impl Parser {
         }
 
         self.consume(Token::Newline)?;
+        while *self.peek() == Token::Newline {
+            self.advance();
+        }
 
         result
     }
 
     fn procedure(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::Procedure).expect("expected procedure");
-        let declaration: ProcedureDeclaration;
-        if let Token::Identifier(name) = self.peek() {
-            declaration = ProcedureDeclaration(name.clone());
-            self.advance();
-            self.consume(Token::Newline).expect("expected newline");
+
+        let declaration = if let Token::Identifier(name) = self.peek() {
+            Ok(ProcedureDeclaration(name.clone()))
         } else {
-            return Err(CrawlError::ParserError {
+            Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
-            });
-        }
+            })
+        }?;
+
+        self.advance();
+        self.consume(Token::Newline).expect("expected newline");
 
         let mut body = Vec::new();
         while *self.peek() != Token::End {
@@ -175,6 +176,14 @@ impl Parser {
         let mut arms: Vec<MatchingRollArm> = Vec::new();
         while *self.peek() != Token::End {
             self.consume(Token::Indent).expect("expected indent");
+            while *self.peek() == Token::Indent {
+                self.advance();
+            }
+
+            // this is ugly - why check for end in the while loop if we never find it there?
+            if *self.peek() == Token::End {
+                break;
+            }
 
             let target = match self.peek() {
                 Token::NumRange(_, _) => Ok(self.peek().clone()),
@@ -192,6 +201,8 @@ impl Parser {
 
             self.consume(Token::Newline).expect("expected newline");
         }
+
+        self.consume(Token::End).expect("expected end");
 
         Ok(Statement::MatchingRoll {
             roll_specifier,

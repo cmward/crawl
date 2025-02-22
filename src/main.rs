@@ -1,10 +1,27 @@
 use crawl::lang::Crawl;
-use std::io::{self, Write};
+use std::{
+    env,
+    error::Error,
+    ffi::OsString,
+    fs,
+    io::{self, Write},
+};
 
-fn main() {
-    // TODO: no args -> repl, one arg -> execute file
+fn main() -> Result<(), Box<dyn Error>> {
+    match env::args_os().nth(1) {
+        Some(filepath) => execute_file(filepath),
+        None => repl(),
+    }
+}
 
-    // let input = "roll 1-3 on 1d6\nreminder \"hi :D\"\n".to_string();
+fn execute_file(filepath: OsString) -> Result<(), Box<dyn Error>> {
+    let input = fs::read_to_string(filepath)?;
+    let crawl = Crawl::new();
+    crawl.execute(&input);
+    Ok(())
+}
+
+fn repl() -> Result<(), Box<dyn Error>> {
     print!(">> ");
     std::io::stdout().flush().unwrap();
 
@@ -16,4 +33,5 @@ fn main() {
 
     let crawl = Crawl::new();
     crawl.execute(&input);
+    Ok(())
 }

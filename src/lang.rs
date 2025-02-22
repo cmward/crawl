@@ -24,7 +24,7 @@ impl Crawl {
             .map(|node| node.unwrap())
             .collect();
 
-        println!("{ast:?}\n");
+        println!("{ast:#?}\n");
 
         let mut interpreter = Interpreter::new();
         let records: Vec<StatementRecord> = interpreter
@@ -33,8 +33,8 @@ impl Crawl {
             .map(|record| record.unwrap())
             .collect();
 
-        println!("{records:?}\n");
+        println!("{records:#?}\n");
 
-        println!("{:?}", interpreter.local_facts);
+        println!("{:#?}", interpreter.local_facts);
     }
 }

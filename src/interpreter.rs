@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::dice::DiceRoll;
+use crate::dice::{DiceRoll, DiceRollResult};
 use crate::error::CrawlError;
 use crate::facts::FactDatabase;
 use crate::parser::{
@@ -141,7 +141,7 @@ impl Interpreter {
             Statement::SetFact(fact) => self.evaluate_set_fact(fact.clone()),
             Statement::SetPersistentFact(fact) => self.evaluate_set_persistent_fact(fact.clone()),
             Statement::Reminder(reminder) => self.evaluate_reminder(reminder.clone()),
-            Statement::TableRoll(table_name) => todo!(),
+            Statement::TableRoll(table_name) => self.evaluate_table_roll(table_name.clone()),
             _ => Err(CrawlError::InterpreterError {
                 reason: "Invalid statement as consequent".into(),
             }),
@@ -198,8 +198,10 @@ impl Interpreter {
         modified_roll_specifier: &ModifiedRollSpecifier,
         arms: &[MatchingRollArm],
     ) -> Result<StatementRecord, CrawlError> {
+        let roll: DiceRoll = modified_roll_specifier.try_into()?;
+        let roll_result = roll.roll();
         for arm in arms {
-            if self.evaluate_dice_roll(&arm.target, modified_roll_specifier)? {
+            if self.roll_result_matches_target(&roll_result, &arm.target)? {
                 return Ok(StatementRecord::MatchingRoll {
                     matched_target: Some(arm.target.clone()),
                     consequent: Some(Box::new(self.evaluate_consequent(&arm.consequent)?)),
@@ -278,12 +280,20 @@ impl Interpreter {
     }
 
     fn evaluate_dice_roll(
-        &mut self,
+        &self,
         target: &Token,
         modified_roll_specifier: &ModifiedRollSpecifier,
     ) -> Result<bool, CrawlError> {
         let roll: DiceRoll = modified_roll_specifier.try_into()?;
         let roll_result = roll.roll();
+        self.roll_result_matches_target(&roll_result, target)
+    }
+
+    fn roll_result_matches_target(
+        &self,
+        roll_result: &DiceRollResult,
+        target: &Token,
+    ) -> Result<bool, CrawlError> {
         match target {
             Token::Num(n) => Ok(roll_result.total == *n),
             Token::NumRange(min, max) => Ok(*min <= roll_result.total && roll_result.total <= *max),

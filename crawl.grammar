@@ -20,7 +20,8 @@ consequent         -> (set_fact
                       | reminder
                       )
 load_table         -> "load" "table" STRING
-matching_roll      -> "roll" modified_specifier NEWLINE (INDENT (NUM_RANGE | NUMBER) "=>" consequent NEWLINE)+ "end"
+matching_roll      -> "roll" modified_specifier NEWLINE (INDENT+ (NUM_RANGE | NUMBER) 
+                        "=>" consequent NEWLINE)+ "end"
 set_fact           -> "set-fact" STRING
 set_pfact          -> "set-persistent-fact" STRING
 clear_fact         -> "clear-fact" STRING
