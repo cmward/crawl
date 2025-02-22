@@ -91,7 +91,10 @@ impl Interpreter {
             } => self.evaluate_matching_roll(roll_specifier, arms),
             Statement::Procedure { declaration, body } => {
                 // How to avoid the vec copy?
-                self.evaluate_procedure_definition(declaration, body.clone())
+                self.evaluate_procedure_definition(
+                    declaration,
+                    body.clone().into_iter().map(|s| *s).collect(),
+                )
             }
             Statement::ProcedureCall(procedure_name) => {
                 self.evaluate_procedure_call(procedure_name)
@@ -100,7 +103,7 @@ impl Interpreter {
             // Can you {operation}_fact as a top-level statement? What would that mean/do?
             Statement::SetFact(fact) => self.evaluate_set_fact(fact.clone()),
             Statement::SetPersistentFact(fact) => self.evaluate_set_persistent_fact(fact.clone()),
-            Statement::TableRoll(table_name) => todo!(),  // syntactic sugar for matching roll?
+            Statement::TableRoll(table_name) => todo!(), // syntactic sugar for matching roll?
         }
     }
 
@@ -125,6 +128,9 @@ impl Interpreter {
             Statement::ClearFact(fact) => self.evaluate_clear_fact(fact.clone()),
             Statement::ClearPersistentFact(fact) => {
                 self.evaluate_clear_persistent_fact(fact.clone())
+            }
+            Statement::ProcedureCall(procedure_identifier) => {
+                self.evaluate_procedure_call(procedure_identifier)
             }
             Statement::SetFact(fact) => self.evaluate_set_fact(fact.clone()),
             Statement::SetPersistentFact(fact) => self.evaluate_set_persistent_fact(fact.clone()),
@@ -182,11 +188,11 @@ impl Interpreter {
     fn evaluate_procedure_definition(
         &mut self,
         declaration: &ProcedureDeclaration,
-        body: Vec<Box<Statement>>,
+        body: Vec<Statement>,
     ) -> Result<StatementRecord, CrawlError> {
         let ident = declaration.0.clone();
-        let def = CrawlProcedure::new(ident.clone(), body.into_iter().map(|s| *s).collect());
-        self.procedures.insert(ident.clone(), def);
+        let def = CrawlProcedure::new(ident.clone(), body);
+        self.procedures.insert(def.identifier.clone(), def);
         Ok(StatementRecord::ProcedureDefinition(ident.clone()))
     }
 

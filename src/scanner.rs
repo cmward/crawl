@@ -153,16 +153,17 @@ impl Scanner {
         match (is_dice_roll, is_roll_range) {
             (true, false) => Ok(Token::RollSpecifier(lexeme)),
             (false, true) => {
-                if let Ok(RollTarget::NumRange(range_min, range_max)) = RollTarget::try_from(lexeme.clone())
+                if let Ok(RollTarget::NumRange(range_min, range_max)) =
+                    RollTarget::try_from(lexeme.clone())
                 {
-                    return Ok(Token::NumRange(range_min, range_max));
+                    Ok(Token::NumRange(range_min, range_max))
                 } else {
-                    return Err(CrawlError::ScannerError {
+                    Err(CrawlError::ScannerError {
                         position: self.position,
                         line: self.line,
                         lexeme,
-                        reason: format!("invalid roll target"),
-                    });
+                        reason: "invalid roll target".into(),
+                    })
                 }
             }
             (false, false) => Ok(Token::Num(

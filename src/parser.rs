@@ -261,12 +261,13 @@ impl Parser {
 
     fn consequent(&mut self) -> Result<Statement, CrawlError> {
         match self.peek() {
-            Token::SetFact => self.set_fact(),
-            Token::SetPersistentFact => self.set_persistent_fact(),
             Token::ClearFact => self.clear_fact(),
             Token::ClearPersistentFact => self.clear_persistent_fact(),
+            Token::Identifier(_) => self.procedure_call(),
             Token::Reminder => self.reminder(),
             Token::Roll => self.table_roll(),
+            Token::SetFact => self.set_fact(),
+            Token::SetPersistentFact => self.set_persistent_fact(),
             _ => Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
             }),
