@@ -1,47 +1,44 @@
-// This was an initial sketch of dice rolling. Will probably end up nuking this, but leaving
-// it in case it ends up being helpful for the interpreter.
-
+use crate::error::CrawlError;
+use crate::parser::ModifiedRollSpecifier;
+use crate::scanner::Token;
 use core::fmt;
-use std::{cmp::Ordering, collections::HashMap, str::FromStr};
-
 use rand::Rng;
 use regex::Regex;
+use std::collections::HashMap;
 
 #[derive(Debug)]
-struct DieRollResult {
-    die: Die,
-    throw: i32,
-}
+pub struct DieRollResult(i32);
 
 impl fmt::Display for DieRollResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.throw)
+        write!(f, "{}", self.0)
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct Die(i32);
+pub struct Die(pub i32);
 
 impl Die {
     fn roll(&self) -> DieRollResult {
-        DieRollResult {
-            die: self.clone(),
-            throw: rand::thread_rng().gen_range(1..=self.0),
-        }
+        DieRollResult(rand::thread_rng().gen_range(1..=self.0))
     }
 }
 
 #[derive(Debug)]
-struct DicePoolRollResult {
-    results: Vec<DieRollResult>,
+pub struct DicePoolRollResult {
+    pub results: Vec<DieRollResult>,
 }
 
 #[derive(Debug)]
-struct DicePool {
-    dice: Vec<Die>,
+pub struct DicePool {
+    pub dice: Vec<Die>,
 }
 
 impl DicePool {
+    pub fn new(dice: Vec<Die>) -> Self {
+        DicePool { dice }
+    }
+
     fn roll(&self) -> DicePoolRollResult {
         DicePoolRollResult {
             results: self.dice.iter().map(Die::roll).collect(),
@@ -65,9 +62,9 @@ impl fmt::Display for DicePool {
 
 #[derive(Debug)]
 pub struct DiceRollResult {
-    pool_result: DicePoolRollResult,
-    modifier: i32,
-    total: i32,
+    pub pool_result: DicePoolRollResult,
+    pub modifier: i32,
+    pub total: i32,
 }
 
 impl fmt::Display for DiceRollResult {
@@ -76,113 +73,73 @@ impl fmt::Display for DiceRollResult {
     }
 }
 
+impl DiceRollResult {
+    fn new(pool_result: DicePoolRollResult, modifier: i32, total: i32) -> Self {
+        DiceRollResult {
+            pool_result,
+            modifier,
+            total,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct DiceRoll {
-    dice_pool: DicePool,
-    modifier: i32,
+    pub dice_pool: DicePool,
+    pub modifier: i32,
 }
 
 impl DiceRoll {
+    pub fn new(dice_pool: DicePool, modifier: i32) -> Self {
+        DiceRoll {
+            dice_pool,
+            modifier,
+        }
+    }
+
     pub fn roll(&self) -> DiceRollResult {
         let pool_result = self.dice_pool.roll();
-        let unmodified_total = pool_result.results.iter().fold(0, |acc, e| acc + e.throw);
-        DiceRollResult {
-            pool_result,
-            modifier: self.modifier,
-            total: unmodified_total + self.modifier,
-        }
+        let unmodified_total = pool_result.results.iter().fold(0, |acc, e| acc + e.0);
+        DiceRollResult::new(pool_result, self.modifier, unmodified_total + self.modifier)
     }
+}
 
-    fn parse_n_dice_from_str(
-        s: &str,
-        captures: &regex::Captures,
-    ) -> Result<i32, ParseDiceRollError> {
-        captures["n_dice"].parse().map_err(|_| ParseDiceRollError {
-            input: String::from(s),
-            failed_on: String::from("n_dice"),
-        })
-    }
+impl TryFrom<&ModifiedRollSpecifier> for DiceRoll {
+    type Error = CrawlError;
 
-    fn parse_n_sides_from_str(
-        s: &str,
-        captures: &regex::Captures,
-    ) -> Result<i32, ParseDiceRollError> {
-        captures["n_sides"].parse().map_err(|_| ParseDiceRollError {
-            input: String::from(s),
-            failed_on: String::from("n_sides"),
-        })
-    }
+    fn try_from(value: &ModifiedRollSpecifier) -> Result<Self, Self::Error> {
+        if let Token::RollSpecifier(ref spec) = value.base_roll_specifier {
+            let re = Regex::new(r"(?<n_dice>\d+)*d(?<n_sides>\d+)").unwrap();
+            let captures = re
+                .captures(spec)
+                .ok_or(CrawlError::ParserError {
+                    token: format!("{:?}", value),
+                })
+                .expect("failed to parse roll specifier");
 
-    fn parse_modifier_from_str(
-        s: &str,
-        captures: &regex::Captures,
-    ) -> Result<i32, ParseDiceRollError> {
-        match &captures.name("modifier") {
-            Some(m) => {
-                let mut split_modifier = m.as_str().split_whitespace();
-                let modifier = match (
-                    split_modifier.next(),
-                    split_modifier.next(),
-                    split_modifier.next(),
-                ) {
-                    (Some("+"), Some(amount), None) => amount.parse::<i32>().unwrap(),
-                    (Some("-"), Some(amount), None) => -amount.parse::<i32>().unwrap(),
-                    _ => {
-                        return Err(ParseDiceRollError {
-                            input: String::from(s),
-                            failed_on: String::from("modifier"),
-                        })
-                    }
-                };
-                Ok(modifier)
+            let n_dice = captures["n_dice"].parse().expect("failed to parse n_dice");
+            let n_sides = captures["n_sides"]
+                .parse()
+                .expect("failed to parse n_sides");
+
+            let mut dice = Vec::new();
+            for _ in 0..n_dice {
+                dice.push(Die(n_sides));
             }
-            _ => Ok(0),
-        }
-    }
 
-    fn parse_str(s: &str) -> Result<DiceRoll, ParseDiceRollError> {
-        let re = Regex::new(r"(?<n_dice>\d+)*d(?<n_sides>\d+)(?<modifier> [+-] \d+)*").unwrap();
-        let captures = re.captures(s).ok_or(ParseDiceRollError {
-            input: String::from(s),
-            failed_on: String::from("capture"),
-        })?;
-
-        let n_dice = Self::parse_n_dice_from_str(s, &captures)?;
-        let n_sides = Self::parse_n_sides_from_str(s, &captures)?;
-        let modifier = Self::parse_modifier_from_str(s, &captures)?;
-
-        let mut dice = vec![];
-        for _ in 0..n_dice {
-            dice.push(Die(n_sides));
-        }
-
-        Ok(DiceRoll {
-            dice_pool: DicePool { dice },
-            modifier,
-        })
-    }
-}
-
-impl fmt::Display for DiceRoll {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.modifier.cmp(&0) {
-            Ordering::Greater => write!(f, "{} + {}", self.dice_pool, self.modifier),
-            Ordering::Less => write!(f, "{} - {}", self.dice_pool, self.modifier.abs()),
-            Ordering::Equal => write!(f, "{}", self.dice_pool),
+            Ok(DiceRoll::new(DicePool { dice }, value.modifier))
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", value),
+            })
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct ParseDiceRollError {
-    input: String,
-    failed_on: String,
-}
+impl TryFrom<ModifiedRollSpecifier> for DiceRoll {
+    type Error = CrawlError;
 
-impl FromStr for DiceRoll {
-    type Err = ParseDiceRollError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::parse_str(s)
+    fn try_from(value: ModifiedRollSpecifier) -> Result<Self, Self::Error> {
+        Self::try_from(&value)
     }
 }

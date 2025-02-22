@@ -3,6 +3,7 @@
 */
 
 use crate::error::CrawlError;
+use crate::rolls::RollTarget;
 
 const EOF_CHAR: char = '\0';
 
@@ -18,6 +19,7 @@ pub enum Token {
     Identifier(String),
     If,
     Indent,
+    Load,
     Minus,
     Newline,
     Num(i32),
@@ -32,8 +34,6 @@ pub enum Token {
     SetFact,
     SetPersistentFact,
     Str(String),
-    SwapFact,
-    SwapPersistentFact,
     Table,
 }
 
@@ -50,7 +50,7 @@ impl Scanner {
         Scanner {
             source,
             position: 0,
-            line: 0,
+            line: 1,
             start: 0,
         }
     }
@@ -81,11 +81,18 @@ impl Scanner {
                 // Quoted text - Str
                 '"' => return self.scan_str(),
 
-                // Text - keywords
+                // Text - keywords and identifiers
                 c if c.is_alphabetic() => return self.scan_symbol(),
 
                 // This is the only reason this needs to be wrapped in a loop
-                ' ' => self.start = self.position,
+                ' ' => {
+                    let token = self.scan_whitespace();
+                    if let Some(t) = token {
+                        return Ok(t);
+                    } else {
+                        self.start = self.position;
+                    }
+                }
 
                 '\t' => return Ok(Token::Indent),
 
@@ -154,19 +161,18 @@ impl Scanner {
         match (is_dice_roll, is_roll_range) {
             (true, false) => Ok(Token::RollSpecifier(lexeme)),
             (false, true) => {
-                let range_nums = lexeme.split('-').collect::<Vec<&str>>();
-                // TODO: produce ScannerErrors here
-                let range_min = range_nums
-                    .first()
-                    .expect("range min should be a value")
-                    .parse::<i32>()
-                    .expect("range min should be a number");
-                let range_max = range_nums
-                    .last()
-                    .expect("range max should be a value")
-                    .parse::<i32>()
-                    .expect("range max should be a number");
-                Ok(Token::NumRange(range_min, range_max))
+                if let Ok(RollTarget::NumRange(range_min, range_max)) =
+                    RollTarget::try_from(lexeme.clone())
+                {
+                    Ok(Token::NumRange(range_min, range_max))
+                } else {
+                    Err(CrawlError::ScannerError {
+                        position: self.position,
+                        line: self.line,
+                        lexeme,
+                        reason: "invalid roll target".into(),
+                    })
+                }
             }
             (false, false) => Ok(Token::Num(
                 lexeme.parse::<i32>().expect("should be a number"),
@@ -178,6 +184,21 @@ impl Scanner {
                 reason: "can't be a dice roll and dice range".into(),
             }),
         }
+    }
+
+    fn scan_whitespace(&mut self) -> Option<Token> {
+        // Potentially easier to do an initial pass on source text converting all sequences of 4
+        // spaces into explicit tab characters.
+        let mut n_spaces = 1;
+        while self.peek() == ' ' {
+            n_spaces += 1;
+            self.advance();
+            if n_spaces == 4 {
+                return Some(Token::Indent);
+            }
+        }
+
+        None
     }
 
     fn scan_str(&mut self) -> Result<Token, CrawlError> {
@@ -206,8 +227,7 @@ impl Scanner {
 
     fn scan_symbol(&mut self) -> Result<Token, CrawlError> {
         let mut next_ch = self.curr_char();
-        // function names can have hyphens in them
-        while !self.is_at_end() && (next_ch.is_alphabetic() || next_ch == '-') {
+        while !self.is_at_end() && (next_ch.is_alphabetic() || next_ch == '-' || next_ch == '?') {
             self.advance();
             next_ch = self.curr_char();
         }
@@ -225,14 +245,13 @@ impl Scanner {
             "end" => Some(Token::End),
             "fact?" => Some(Token::FactTest),
             "if" => Some(Token::If),
+            "load" => Some(Token::Load),
             "on" => Some(Token::On),
             "procedure" => Some(Token::Procedure),
             "reminder" => Some(Token::Reminder),
             "roll" => Some(Token::Roll),
             "set-fact" => Some(Token::SetFact),
             "set-persistent-fact" => Some(Token::SetPersistentFact),
-            "swap-fact" => Some(Token::SwapFact),
-            "swap-persistent-fact" => Some(Token::SwapPersistentFact),
             "table" => Some(Token::Table),
             _ => None,
         }
@@ -394,10 +413,7 @@ mod tests {
 
     #[test]
     fn scan_matching_roll() {
-        let source = "roll 2d6
-            \t2-4 => set-fact \"encounter is hostile\"
-            \t5-8 => set-fact \"encounter is neutral\"
-            end"
+        let source = "roll 2d6\n\t2-4 => set-fact \"encounter is hostile\"\n\t5-8 => set-fact \"encounter is neutral\"\nend"
         .chars()
         .collect();
         let mut scanner = Scanner::new(source);

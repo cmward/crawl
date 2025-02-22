@@ -10,5 +10,7 @@ pub enum CrawlError {
         reason: String,
     },
     #[error("parser error (token: {token:?})")]
-    ParserError { token: String },
+    ParserError { token: String },  // TODO: get token info for line, position, etc.
+    #[error("interpreter error (reason: {reason:?})")]
+    InterpreterError { reason: String },  // TODO: get token info for line, position, etc.
 }

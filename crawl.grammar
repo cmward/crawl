@@ -4,10 +4,10 @@ statement          -> (procedure
                       | if_then 
                       | matching_roll
                       | consequent
-                      | reminder
+                      | load_table
                       ) NEWLINE
 procedure          -> proc_decl (INDENT statement)+ "end" NEWLINE
-proc_decl          -> "procedure" IDENT
+proc_decl          -> "procedure" IDENTIFIER
 if_then            -> "if" antecedent "=>" consequent
 antecedent         -> (dice_roll | check_fact)
 consequent         -> (set_fact
@@ -17,8 +17,11 @@ consequent         -> (set_fact
                       | swap_fact,
                       | swap_pfact,
                       | table_roll
+                      | reminder
                       )
-matching_roll      -> "roll" modified_specifier NEWLINE (INDENT (NUM_RANGE | NUMBER) "=>" consequent NEWLINE)+ "end"
+load_table         -> "load" "table" STRING
+matching_roll      -> "roll" modified_specifier NEWLINE (INDENT+ (NUM_RANGE | NUMBER) 
+                        "=>" consequent NEWLINE)+ "end"
 set_fact           -> "set-fact" STRING
 set_pfact          -> "set-persistent-fact" STRING
 clear_fact         -> "clear-fact" STRING
@@ -31,4 +34,4 @@ reminder           -> "reminder" STRING
 dice_roll          -> "roll" (NUM_RANGE | NUMBER) "on" modified_specifier
 modified_specifier -> ROLL_SPECIFIER ((+ | -) NUMBER){0,1}
 table_roll         -> "roll" "on" "table" STRING
-proc_call          -> IDENT
+proc_call          -> IDENTIFIER
