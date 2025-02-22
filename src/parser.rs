@@ -13,6 +13,7 @@ pub enum Statement {
         antecedent: Antecedent,
         consequent: Box<Statement>,
     },
+    LoadTable(String),
     MatchingRoll {
         roll_specifier: ModifiedRollSpecifier,
         arms: Vec<MatchingRollArm>,
@@ -85,6 +86,7 @@ impl Parser {
             Token::ClearPersistentFact => self.clear_persistent_fact(),
             Token::Identifier(_) => self.procedure_call(),
             Token::If => self.if_then(),
+            Token::Load => self.load_table(),
             Token::Procedure => self.procedure(),
             Token::Reminder => self.reminder(),
             Token::Roll => match self.peek_next() {
@@ -195,6 +197,23 @@ impl Parser {
             roll_specifier,
             arms,
         })
+    }
+
+    fn load_table(&mut self) -> Result<Statement, CrawlError> {
+        self.consume(Token::Load).expect("expected load");
+        self.consume(Token::Table).expect("expected table");
+
+        let load_table = if let Token::Str(table_name) = self.peek() {
+            Ok(Statement::LoadTable(table_name.clone()))
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        };
+
+        self.advance();
+
+        load_table
     }
 
     fn modified_specifier(&mut self) -> Result<ModifiedRollSpecifier, CrawlError> {

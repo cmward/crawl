@@ -7,6 +7,7 @@ use crate::parser::{
     Antecedent, MatchingRollArm, ModifiedRollSpecifier, ProcedureDeclaration, Statement,
 };
 use crate::scanner::Token;
+use crate::tables::Table;
 
 #[derive(Debug, PartialEq)]
 pub enum StatementRecord {
@@ -18,6 +19,7 @@ pub enum StatementRecord {
         antecedent: bool,
         consequent: Option<Box<StatementRecord>>,
     },
+    LoadTable(String),
     MatchingRoll {
         matched_target: Option<Token>,
         consequent: Option<Box<StatementRecord>>,
@@ -29,6 +31,7 @@ pub enum StatementRecord {
     Reminder(String),
     SetFact(String),
     SetPersistentFact(String),
+    TableRoll(String),
 }
 
 #[derive(Debug)]
@@ -45,6 +48,7 @@ impl CrawlProcedure {
 
 pub struct Interpreter {
     procedures: HashMap<String, CrawlProcedure>,
+    tables: HashMap<String, Table>,
     pub persistent_facts: FactDatabase,
     pub local_facts: FactDatabase,
 }
@@ -59,6 +63,7 @@ impl Interpreter {
     pub fn new() -> Self {
         Interpreter {
             procedures: HashMap::new(),
+            tables: HashMap::new(),
             persistent_facts: FactDatabase::default(),
             local_facts: FactDatabase::default(),
         }
@@ -85,6 +90,7 @@ impl Interpreter {
                 antecedent,
                 consequent,
             } => self.evaluate_if_then(antecedent, consequent),
+            Statement::LoadTable(table_name) => self.evaluate_load_table(table_name.clone()),
             Statement::MatchingRoll {
                 roll_specifier,
                 arms,
@@ -103,7 +109,7 @@ impl Interpreter {
             // Can you {operation}_fact as a top-level statement? What would that mean/do?
             Statement::SetFact(fact) => self.evaluate_set_fact(fact.clone()),
             Statement::SetPersistentFact(fact) => self.evaluate_set_persistent_fact(fact.clone()),
-            Statement::TableRoll(table_name) => todo!(), // syntactic sugar for matching roll?
+            Statement::TableRoll(table_name) => self.evaluate_table_roll(table_name.clone()),
         }
     }
 
@@ -163,6 +169,28 @@ impl Interpreter {
 
     fn evaluate_reminder(&mut self, reminder: String) -> Result<StatementRecord, CrawlError> {
         Ok(StatementRecord::Reminder(reminder))
+    }
+
+    fn evaluate_load_table(&mut self, table_name: String) -> Result<StatementRecord, CrawlError> {
+        let table_load = Table::load(&table_name);
+        match table_load {
+            Ok(table) => {
+                self.tables.insert(table_name.clone(), table);
+                Ok(StatementRecord::LoadTable(table_name))
+            }
+            Err(error) => Err(CrawlError::InterpreterError {
+                reason: format!("Failed to load table {table_name} ({error})"),
+            }),
+        }
+    }
+
+    fn evaluate_table_roll(&mut self, table_name: String) -> Result<StatementRecord, CrawlError> {
+        let table = self.tables.get(&table_name).unwrap();
+        // TODO: support `roll 1d6 + 3 on table "crits"`
+        let table_roll_result = table.auto_roll()?;
+        Ok(StatementRecord::TableRoll(
+            table_roll_result.entry.value.clone(),
+        ))
     }
 
     fn evaluate_matching_roll(
@@ -419,9 +447,9 @@ mod tests {
                 consequent: Statement::Reminder("matched 1".into()),
             }],
         };
-        let value = interp_to_values(vec![ast]);
+        let values = interp_to_values(vec![ast]);
         assert_eq!(
-            value,
+            values,
             vec![StatementRecord::MatchingRoll {
                 matched_target: Some(Token::Num(1)),
                 consequent: Some(Box::new(StatementRecord::Reminder("matched 1".into()))),
@@ -445,6 +473,29 @@ mod tests {
         assert!(interp
             .persistent_facts
             .check(&Fact::try_from(String::from("weather is nice")).unwrap()));
+    }
+
+    #[test]
+    fn interpret_load_table() {
+        let ast = Statement::LoadTable("table.csv".into());
+        let mut interp = Interpreter::new();
+        let values: Vec<StatementRecord> = interp
+            .interpret(vec![ast])
+            .into_iter()
+            .map(|v| v.unwrap())
+            .collect();
+        assert_eq!(values, vec![StatementRecord::LoadTable("table.csv".into())]);
+        assert!(interp.tables.contains_key("table.csv"));
+    }
+
+    #[test]
+    fn interpret_table_roll() {
+        let ast = vec![
+            Statement::LoadTable("table.csv".into()),
+            Statement::TableRoll("table.csv".into()),
+        ];
+        // TODO: not really a test
+        let _ = interp_to_values(ast);
     }
 
     #[test]

@@ -1,16 +1,20 @@
 use std::{collections::HashMap, error::Error, fs::File};
 
-use crate::{dice::DiceRoll, error::CrawlError, rolls::RollTarget};
+use crate::{
+    dice::{DicePool, DiceRoll, Die},
+    error::CrawlError,
+    rolls::RollTarget,
+};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct TableEntry {
     roll_target: RollTarget,
-    value: String,
+    pub value: String,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct TableRollResult<'a> {
-    entry: &'a TableEntry,
+    pub entry: &'a TableEntry,
 }
 
 impl<'a> TableRollResult<'a> {
@@ -44,6 +48,15 @@ impl Table {
         }
     }
 
+    pub fn auto_roll(&self) -> Result<TableRollResult, CrawlError> {
+        let max_value = *self.roll_targets.keys().max().unwrap();
+        let dice = vec![Die(max_value)];
+        let dice_pool = DicePool::new(dice);
+        let roll = DiceRoll::new(dice_pool, 0);
+        self.roll(roll)
+    }
+
+    // TODO: load from table paths + without extension
     pub fn load(filepath: &str) -> Result<Self, Box<dyn Error>> {
         let file = File::open(filepath)?;
         let mut rdr = csv::ReaderBuilder::new()
@@ -137,7 +150,8 @@ mod tests {
 
     #[test]
     fn from_csv() {
-        let table = dbg!(Table::load("table.csv").unwrap());
+        // TODO: test fixtures location
+        let table = Table::load("table.csv").unwrap();
 
         let dice = DiceRoll::new(DicePool::new(vec![Die(1)]), 11);
         let result = table.roll(dice).unwrap();
