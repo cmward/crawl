@@ -22,12 +22,10 @@ consequent         -> (set_fact
 load_table         -> "load" "table" STRING
 matching_roll      -> "roll" modified_specifier NEWLINE (INDENT+ (NUM_RANGE | NUMBER) 
                         "=>" consequent NEWLINE)+ "end"
-set_fact           -> "set-fact" STRING
+set_fact           -> "set-fact" format_str
 set_pfact          -> "set-persistent-fact" STRING
 clear_fact         -> "clear-fact" STRING
 clear_pfact        -> "clear-persistent-fact" STRING
-swap_fact          -> "swap-fact" STRING
-swap_pfact         -> "swap-persistent-fact" STRING
 check_fact         -> "fact?" STRING
 check_pfact        -> "persistent-fact?" STRING
 reminder           -> "reminder" STRING
@@ -35,3 +33,4 @@ dice_roll          -> "roll" (NUM_RANGE | NUMBER) "on" modified_specifier
 modified_specifier -> ROLL_SPECIFIER ((+ | -) NUMBER){0,1}
 table_roll         -> "roll" "on" "table" STRING
 proc_call          -> IDENTIFIER
+format_str         -> STRING ("%" ("roll" modified_specifier | table_roll))*

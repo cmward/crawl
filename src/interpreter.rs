@@ -1,10 +1,12 @@
+use regex::Regex;
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use crate::dice::{DiceRoll, DiceRollResult};
 use crate::error::CrawlError;
 use crate::facts::FactDatabase;
 use crate::parser::{
-    Antecedent, MatchingRollArm, ModifiedRollSpecifier, ProcedureDeclaration, Statement,
+    Antecedent, CrawlStr, MatchingRollArm, ModifiedRollSpecifier, ProcedureDeclaration, Statement,
 };
 use crate::scanner::Token;
 use crate::tables::Table;
@@ -24,6 +26,7 @@ pub enum StatementRecord {
         matched_target: Option<Token>,
         consequent: Option<Box<StatementRecord>>,
     },
+    NontargetedRoll(i32),
     ProcedureCall {
         identifier: String,
         records: Vec<Box<StatementRecord>>,
@@ -109,6 +112,7 @@ impl Interpreter {
             Statement::SetFact(fact) => self.evaluate_set_fact(fact.clone()),
             Statement::SetPersistentFact(fact) => self.evaluate_set_persistent_fact(fact.clone()),
             Statement::TableRoll(table_name) => self.evaluate_table_roll(table_name),
+            Statement::NontargetedRoll(specifier) => self.evaluate_nontargeted_roll(specifier),
         }
     }
 
@@ -271,9 +275,12 @@ impl Interpreter {
         Ok(self.local_facts.check(&fact.try_into().unwrap()))
     }
 
-    fn evaluate_set_fact(&mut self, fact: String) -> Result<StatementRecord, CrawlError> {
-        self.local_facts.set(fact.clone().try_into().unwrap());
-        Ok(StatementRecord::SetFact(fact))
+    fn evaluate_set_fact(&mut self, fact: CrawlStr) -> Result<StatementRecord, CrawlError> {
+        let evaluated_fact = self.evaluate_str(fact.clone())?;
+        dbg!(&evaluated_fact);
+        self.local_facts
+            .set(evaluated_fact.clone().try_into().unwrap());
+        Ok(StatementRecord::SetFact(evaluated_fact))
     }
 
     fn evaluate_clear_fact(&mut self, fact: String) -> Result<StatementRecord, CrawlError> {
@@ -289,6 +296,38 @@ impl Interpreter {
         let roll: DiceRoll = modified_roll_specifier.try_into()?;
         let roll_result = roll.roll();
         self.roll_result_matches_target(&roll_result, target)
+    }
+
+    fn evaluate_nontargeted_roll(
+        &mut self,
+        modified_roll_specifier: &ModifiedRollSpecifier,
+    ) -> Result<StatementRecord, CrawlError> {
+        let roll: DiceRoll = modified_roll_specifier.try_into()?;
+        let roll_result = roll.roll();
+        Ok(StatementRecord::NontargetedRoll(roll_result.total))
+    }
+
+    fn evaluate_str(&mut self, s: CrawlStr) -> Result<String, CrawlError> {
+        match s {
+            CrawlStr::Str(raw_string) => Ok(raw_string.clone()),
+            CrawlStr::InterpolatedStr {
+                format_string,
+                expressions,
+            } => {
+                // TODO: currently only allows one placeholder
+                let re = Regex::new(r"\{.*\}").unwrap();
+                let mut replaced: Cow<'_, str> = format_string.clone().into();
+                for expr in expressions {
+                    replaced = re.replace(
+                        dbg!(&format_string),
+                        format!("{:?}", self.evaluate_statement(&expr)?),
+                    );
+                    dbg!(&replaced);
+                }
+
+                Ok(dbg!(replaced.to_string()))
+            }
+        }
     }
 
     fn roll_result_matches_target(
@@ -509,6 +548,25 @@ mod tests {
         ];
         // TODO: not really a test
         let _ = interp_to_values(ast);
+    }
+
+    #[test]
+    fn interpret_str_interpolation() {
+        let ast = vec![Statement::SetFact(CrawlStr::InterpolatedStr {
+            format_string: "number is {}".into(),
+            expressions: vec![Statement::NontargetedRoll(ModifiedRollSpecifier {
+                base_roll_specifier: Token::RollSpecifier("1d1".into()),
+                modifier: 0,
+            })],
+        })];
+        let mut interp = Interpreter::new();
+        let values: Vec<StatementRecord> = interp
+            .interpret(ast)
+            .into_iter()
+            .map(|v| v.unwrap())
+            .collect();
+        // TODO: just show the number
+        assert_eq!(values, vec![StatementRecord::SetFact("number is NontargetedRoll(1)".into())]);
     }
 
     #[test]
