@@ -9,6 +9,8 @@ use crate::scanner::Token;
 pub enum Statement {
     ClearFact(String),
     ClearPersistentFact(String),
+    // NonTargetedRoll is only used for string interpolation values
+    NontargetedRoll(ModifiedRollSpecifier),
     IfThen {
         antecedent: Antecedent,
         consequent: Box<Statement>,
@@ -24,13 +26,22 @@ pub enum Statement {
     },
     ProcedureCall(String),
     Reminder(String),
-    SetFact(String),
+    SetFact(CrawlStr),
     SetPersistentFact(String),
     TableRoll(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProcedureDeclaration(pub String);
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CrawlStr {
+    Str(String),
+    InterpolatedStr {
+        format_string: String,
+        expressions: Vec<Statement>,
+    },
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ModifiedRollSpecifier {
@@ -75,7 +86,7 @@ impl Parser {
     pub fn parse(&mut self) -> Vec<Result<Statement, CrawlError>> {
         let mut statements = Vec::new();
         while !self.is_at_end() {
-            statements.push(self.statement());
+            statements.push(Ok(self.statement().unwrap()));
         }
         statements
     }
@@ -96,7 +107,7 @@ impl Parser {
                     token: format!("{:?}", self.peek()),
                 }),
             },
-            Token::SetFact => self.set_fact(),
+            Token::SetFact => dbg!(self.set_fact()),
             Token::SetPersistentFact => self.set_persistent_fact(),
             _ => Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
@@ -209,23 +220,6 @@ impl Parser {
         })
     }
 
-    fn load_table(&mut self) -> Result<Statement, CrawlError> {
-        self.consume(Token::Load).expect("expected load");
-        self.consume(Token::Table).expect("expected table");
-
-        let load_table = if let Token::Str(table_name) = self.peek() {
-            Ok(Statement::LoadTable(table_name.clone()))
-        } else {
-            Err(CrawlError::ParserError {
-                token: format!("{:?}", self.peek()),
-            })
-        };
-
-        self.advance();
-
-        load_table
-    }
-
     fn modified_specifier(&mut self) -> Result<ModifiedRollSpecifier, CrawlError> {
         let base_roll_specifier = if let Token::RollSpecifier(_) = self.peek() {
             Ok(self.peek().clone())
@@ -275,6 +269,23 @@ impl Parser {
         self.advance();
 
         Ok(Statement::Reminder(reminder))
+    }
+
+    fn load_table(&mut self) -> Result<Statement, CrawlError> {
+        self.consume(Token::Load).expect("expected load");
+        self.consume(Token::Table).expect("expected table");
+
+        let load_table = if let Token::Str(table_name) = self.peek() {
+            Ok(Statement::LoadTable(table_name.clone()))
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        };
+
+        self.advance();
+
+        load_table
     }
 
     fn antecedent(&mut self) -> Result<Antecedent, CrawlError> {
@@ -357,15 +368,7 @@ impl Parser {
 
     fn set_fact(&mut self) -> Result<Statement, CrawlError> {
         self.consume(Token::SetFact).expect("expected set-fact");
-        let fact = if let Token::Str(fact) = self.peek() {
-            Ok(fact.clone())
-        } else {
-            Err(CrawlError::ParserError {
-                token: format!("{:?}", self.peek()),
-            })
-        }?;
-
-        self.advance();
+        let fact = self.str()?;
 
         Ok(Statement::SetFact(fact))
     }
@@ -434,6 +437,41 @@ impl Parser {
         Ok(Statement::TableRoll(table_identifier))
     }
 
+    fn nontargeted_roll(&mut self) -> Result<Statement, CrawlError> {
+        self.consume(Token::Roll).expect("expected roll");
+        let spec = self.modified_specifier()?;
+        Ok(Statement::NontargetedRoll(spec))
+    }
+
+    fn str(&mut self) -> Result<CrawlStr, CrawlError> {
+        let s = if let Token::Str(st) = self.peek() {
+            Ok(st.clone())
+        } else {
+            Err(CrawlError::ParserError {
+                token: format!("{:?}", self.peek()),
+            })
+        }?;
+
+        self.advance();
+
+        if let Token::Percent = *self.peek() {
+            self.advance();
+            let expr = match self.peek_next() {
+                Token::On => self.table_roll(),
+                Token::RollSpecifier(_) => self.nontargeted_roll(),
+                _ => Err(CrawlError::ParserError {
+                    token: format!("{:?}", self.peek()),
+                }),
+            }?;
+            Ok(CrawlStr::InterpolatedStr {
+                format_string: s,
+                expressions: vec![expr],
+            })
+        } else {
+            Ok(CrawlStr::Str(s))
+        }
+    }
+
     fn advance(&mut self) {
         self.position += 1;
     }
@@ -450,7 +488,10 @@ impl Parser {
     }
 
     fn peek(&self) -> &Token {
-        &self.tokens[self.position]
+        if self.tokens.len() > self.position {
+            return &self.tokens[self.position]
+        }
+        &Token::Eof
     }
 
     fn peek_next(&self) -> &Token {
@@ -569,7 +610,7 @@ mod tests {
                         modifier: 1,
                     },
                 },
-                consequent: Box::new(Statement::SetFact("cool!".into())),
+                consequent: Box::new(Statement::SetFact(CrawlStr::Str("cool!".into()))),
             }
         )
     }
@@ -607,11 +648,11 @@ mod tests {
                 arms: vec![
                     MatchingRollArm {
                         target: Token::Num(2),
-                        consequent: Statement::SetFact("you died".into())
+                        consequent: Statement::SetFact(CrawlStr::Str("you died".into()))
                     },
                     MatchingRollArm {
                         target: Token::NumRange(3, 40),
-                        consequent: Statement::SetFact("you're alright".into())
+                        consequent: Statement::SetFact(CrawlStr::Str("you're alright".into()))
                     },
                 ]
             }
@@ -624,7 +665,7 @@ mod tests {
         let parsed = Parser::new(toks).set_fact();
         assert_eq!(
             parsed.unwrap(),
-            Statement::SetFact("weather is nice".into())
+            Statement::SetFact(CrawlStr::Str("weather is nice".into()))
         )
     }
 

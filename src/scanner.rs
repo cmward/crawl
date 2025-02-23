@@ -12,7 +12,6 @@ pub enum Token {
     Arrow,
     ClearFact,
     ClearPersistentFact,
-    Concat,
     End,
     Eof,
     FactTest,
@@ -26,6 +25,7 @@ pub enum Token {
     NumRange(i32, i32),
     On,
     PersistentFactTest,
+    Percent,
     Plus,
     Procedure,
     Reminder,
@@ -117,6 +117,8 @@ impl Scanner {
                 '+' => return Ok(Token::Plus),
 
                 '-' => return Ok(Token::Minus),
+
+                '%' => return Ok(Token::Percent),
 
                 c => {
                     return Err(CrawlError::ScannerError {
@@ -438,6 +440,26 @@ mod tests {
                 Token::Str("encounter is neutral".into()),
                 Token::Newline,
                 Token::End,
+                Token::Eof,
+            ]
+        )
+    }
+
+    #[test]
+    fn scan_interpolated_str() {
+        let source = "set-fact \"encounter distance {}\" % roll 1d6"
+            .chars()
+            .collect();
+        let mut scanner = Scanner::new(source);
+        let toks: Vec<Token> = scanner.tokens().into_iter().map(|t| t.unwrap()).collect();
+        assert_eq!(
+            toks,
+            vec![
+                Token::SetFact,
+                Token::Str("encounter distance {}".into()),
+                Token::Percent,
+                Token::Roll,
+                Token::RollSpecifier("1d6".into()),
                 Token::Eof,
             ]
         )
