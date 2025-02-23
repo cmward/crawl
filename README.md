@@ -15,7 +15,7 @@ procedure day
 end
 
 procedure encounter
-	roll on table "random-encounters.csv"
+    roll on table "random-encounters.csv"
     roll 2d6
         2-4 => set-fact "encounter is hostile"
         5-8 => set-fact "encounter is neutral"
