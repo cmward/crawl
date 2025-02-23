@@ -107,7 +107,7 @@ impl Parser {
                     token: format!("{:?}", self.peek()),
                 }),
             },
-            Token::SetFact => dbg!(self.set_fact()),
+            Token::SetFact => self.set_fact(),
             Token::SetPersistentFact => self.set_persistent_fact(),
             _ => Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
@@ -489,7 +489,7 @@ impl Parser {
 
     fn peek(&self) -> &Token {
         if self.tokens.len() > self.position {
-            return &self.tokens[self.position]
+            return &self.tokens[self.position];
         }
         &Token::Eof
     }

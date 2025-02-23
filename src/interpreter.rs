@@ -277,7 +277,6 @@ impl Interpreter {
 
     fn evaluate_set_fact(&mut self, fact: CrawlStr) -> Result<StatementRecord, CrawlError> {
         let evaluated_fact = self.evaluate_str(fact.clone())?;
-        dbg!(&evaluated_fact);
         self.local_facts
             .set(evaluated_fact.clone().try_into().unwrap());
         Ok(StatementRecord::SetFact(evaluated_fact))
@@ -319,13 +318,12 @@ impl Interpreter {
                 let mut replaced: Cow<'_, str> = format_string.clone().into();
                 for expr in expressions {
                     replaced = re.replace(
-                        dbg!(&format_string),
+                        &format_string,
                         format!("{:?}", self.evaluate_statement(&expr)?),
                     );
-                    dbg!(&replaced);
                 }
 
-                Ok(dbg!(replaced.to_string()))
+                Ok(replaced.to_string())
             }
         }
     }
