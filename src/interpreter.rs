@@ -313,7 +313,6 @@ impl Interpreter {
                 format_string,
                 expressions,
             } => {
-                // TODO: currently only allows one placeholder
                 let re = Regex::new(r"\{.*\}").unwrap();
                 let mut replaced: Cow<'_, str> = format_string.clone().into();
                 for expr in expressions {
