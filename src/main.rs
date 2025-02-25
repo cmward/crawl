@@ -5,6 +5,7 @@ use std::{
     ffi::OsString,
     fs,
     io::{self, Write},
+    process::exit,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -22,16 +23,19 @@ fn execute_file(filepath: OsString) -> Result<(), Box<dyn Error>> {
 }
 
 fn repl() -> Result<(), Box<dyn Error>> {
-    print!(">> ");
-    std::io::stdout().flush().unwrap();
+    ctrlc::set_handler(move || exit(1)).expect("failed to set ctrlc handler");
 
-    let mut input = String::new();
+    loop {
+        print!(">> ");
+        std::io::stdout().flush().unwrap();
 
-    io::stdin()
-        .read_line(&mut input)
-        .expect("failed to read line");
+        let mut input = String::new();
 
-    let crawl = Crawl::new();
-    crawl.execute(&input);
-    Ok(())
+        io::stdin()
+            .read_line(&mut input)
+            .expect("failed to read line");
+
+        let crawl = Crawl::new();
+        crawl.execute(&input);
+    }
 }

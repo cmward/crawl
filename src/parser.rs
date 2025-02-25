@@ -454,6 +454,7 @@ impl Parser {
 
         self.advance();
 
+        // TODO: only allows one placeholder
         if let Token::Percent = *self.peek() {
             self.advance();
             let expr = match self.peek_next() {
