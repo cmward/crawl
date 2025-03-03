@@ -6,19 +6,34 @@ use crate::error::CrawlError;
 pub enum RollTarget {
     Num(i32),
     NumRange(i32, i32),
+    OverOrEqual(i32),
 }
 
-impl TryFrom<String> for RollTarget {
+impl TryFrom<&str> for RollTarget {
     type Error = CrawlError;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let s = value.split('-').collect::<Vec<&str>>();
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let mut s = value.split('-').collect::<Vec<&str>>();
         match s.len() {
             1 => {
+                let mut is_roll_over = false;
+                if let Some(n) = s.last_mut() {
+                    if n.ends_with('+') {
+                        is_roll_over = true;
+                        *n = n.trim_matches('+');
+                    }
+                }
+
                 let num = s
                     .first()
                     .expect("roll target should be a value")
                     .parse::<i32>()
                     .expect("roll target should be a number");
+
+                if is_roll_over {
+                    return Ok(RollTarget::OverOrEqual(num));
+                }
+
                 Ok(RollTarget::Num(num))
             }
             2 => {
@@ -32,6 +47,7 @@ impl TryFrom<String> for RollTarget {
                     .expect("range max should be a value")
                     .parse::<i32>()
                     .expect("range max should be a number");
+
                 Ok(RollTarget::NumRange(range_min, range_max))
             }
             // TODO: not an interpreter error (can happen in scanner or interpreter)
@@ -39,5 +55,13 @@ impl TryFrom<String> for RollTarget {
                 reason: format!("cannot convert {value:?} to RollTarget"),
             }),
         }
+    }
+}
+
+impl TryFrom<String> for RollTarget {
+    type Error = CrawlError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_str())
     }
 }

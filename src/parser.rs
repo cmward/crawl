@@ -157,7 +157,7 @@ impl Parser {
     fn procedure_call(&mut self) -> Result<Statement, CrawlError> {
         if let Token::Identifier(name) = self.peek().clone() {
             self.advance();
-            Ok(Statement::ProcedureCall(name.to_string()))
+            Ok(Statement::ProcedureCall(name))
         } else {
             Err(CrawlError::ParserError {
                 token: format!("{:?}", self.peek()),
