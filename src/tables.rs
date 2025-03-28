@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn from_csv() {
         // TODO: test fixtures location
-        let table = Table::load("table.csv").unwrap();
+        let table = Table::load("examples/table.csv").unwrap();
 
         let dice = DiceRoll::new(DicePool::new(vec![Die(1)]), 11);
         let result = table.roll(&dice).unwrap();
@@ -228,7 +228,7 @@ mod tests {
 
     #[test]
     fn over_target_from_csv() {
-        let table = Table::load("table.csv").unwrap();
+        let table = Table::load("examples/table.csv").unwrap();
 
         let dice = DiceRoll::new(DicePool::new(vec![Die(1)]), 100);
         let result = table.roll(&dice).unwrap();
