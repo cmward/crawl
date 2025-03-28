@@ -526,22 +526,22 @@ mod tests {
 
     #[test]
     fn interpret_load_table() {
-        let ast = Statement::LoadTable("table.csv".into());
+        let ast = Statement::LoadTable("examples/table.csv".into());
         let mut interp = Interpreter::new();
         let values: Vec<StatementRecord> = interp
             .interpret(vec![ast])
             .into_iter()
             .map(|v| v.unwrap())
             .collect();
-        assert_eq!(values, vec![StatementRecord::LoadTable("table.csv".into())]);
-        assert!(interp.tables.contains_key("table.csv"));
+        assert_eq!(values, vec![StatementRecord::LoadTable("examples/table.csv".into())]);
+        assert!(interp.tables.contains_key("examples/table.csv"));
     }
 
     #[test]
     fn interpret_table_roll() {
         let ast = vec![
-            Statement::LoadTable("table.csv".into()),
-            Statement::TableRoll("table.csv".into()),
+            Statement::LoadTable("examples/table.csv".into()),
+            Statement::TableRoll("examples/table.csv".into()),
         ];
         // TODO: not really a test
         let _ = interp_to_values(ast);
